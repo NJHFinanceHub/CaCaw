@@ -9,55 +9,60 @@
 </head>
 <body>
     <div id="app">
+        <!-- Header with bird silhouette -->
         <header>
-            <h1>CaCaw</h1>
-            <p class="subtitle">Wingspan Bird Sound Scanner</p>
+            <div class="header-inner">
+                <svg class="bird-logo" viewBox="0 0 120 60" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M60 8c-8 0-15 3-20 8l-25 22c-3 2-5 1-7-1-1-2 0-4 2-5l18-14c-3 0-6 1-9 3l-12 10c-2 2-4 1-5-1s0-4 2-5l8-6c-4 1-7 3-9 6l-1 2 6 8 14 6 20-2 22-12 14-10c2-2 1-5-1-6-4-2-10-3-17-3z"/>
+                    <path d="M95 25c-3-2-8-3-14-2l-10 4-18 12-16 4-12-3-8-6 2 8c3 6 10 10 20 10 8 0 16-2 24-6l20-10c3-2 4-5 3-7-1-2-2-3-4-4h7z" opacity="0.6"/>
+                </svg>
+                <h1>CaCaw</h1>
+                <p class="subtitle">Wingspan Bird Sound Scanner</p>
+            </div>
         </header>
 
-        <main>
-            <!-- Camera / Capture View -->
-            <div id="camera-section">
-                <div id="video-container">
-                    <video id="camera" autoplay playsinline></video>
-                    <canvas id="overlay" class="hidden"></canvas>
-                    <div id="camera-placeholder">
-                        <div class="placeholder-icon">📷</div>
-                        <p>Tap below to start camera</p>
-                    </div>
-                </div>
-
-                <div id="controls">
-                    <button id="start-camera-btn" class="btn btn-primary">Start Camera</button>
-                    <button id="capture-btn" class="btn btn-capture hidden">
-                        <span class="capture-ring"></span>
-                    </button>
-                    <button id="upload-btn" class="btn btn-secondary">Upload Photo</button>
-                    <input type="file" id="file-input" accept="image/*" capture="environment" class="hidden">
-                </div>
-
-                <!-- Manual search -->
-                <div id="manual-search">
-                    <p class="search-label">Or search by name:</p>
-                    <div class="search-wrapper">
-                        <input type="text" id="search-input" placeholder="Type bird name..." autocomplete="off">
-                        <div id="search-results" class="hidden"></div>
-                    </div>
-                </div>
+        <!-- Search bar - always accessible -->
+        <div id="search-bar">
+            <div class="search-wrapper">
+                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+                </svg>
+                <input type="text" id="search-input" placeholder="Search bird by name..." autocomplete="off">
+                <div id="search-results" class="hidden"></div>
             </div>
+        </div>
 
-            <!-- Result View -->
-            <div id="result-section" class="hidden">
-                <div id="captured-image-container">
-                    <img id="captured-image" alt="Captured card">
-                </div>
+        <!-- Camera viewfinder (nearly full screen) -->
+        <div id="camera-view">
+            <video id="camera" autoplay playsinline></video>
+            <canvas id="overlay" class="hidden"></canvas>
 
-                <div id="status">
-                    <div id="loading" class="hidden">
-                        <div class="spinner"></div>
-                        <p id="loading-text">Scanning card...</p>
-                    </div>
-                </div>
+            <!-- Scan button floating over camera -->
+            <button id="scan-btn" class="scan-btn">
+                <span class="scan-ring"></span>
+                <span class="scan-label">SCAN</span>
+            </button>
 
+            <!-- Upload alternative -->
+            <button id="upload-btn" class="upload-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                Upload
+            </button>
+            <input type="file" id="file-input" accept="image/*" capture="environment" class="hidden">
+
+            <!-- Loading overlay on camera -->
+            <div id="scan-loading" class="hidden">
+                <div class="scan-spinner"></div>
+                <p id="loading-text">Scanning card...</p>
+            </div>
+        </div>
+
+        <!-- Result bottom sheet -->
+        <div id="result-sheet" class="result-sheet hidden">
+            <div class="sheet-handle"></div>
+            <div class="sheet-content">
                 <div id="bird-result" class="hidden">
                     <div class="bird-info">
                         <h2 id="bird-name"></h2>
@@ -66,7 +71,7 @@
 
                     <div id="audio-player" class="hidden">
                         <div class="audio-controls">
-                            <button id="play-btn" class="btn btn-play">
+                            <button id="play-btn" class="btn-play">
                                 <span class="play-icon">&#9654;</span>
                             </button>
                             <div class="audio-info">
@@ -88,22 +93,20 @@
                         <p>No recordings found for this bird.</p>
                     </div>
 
-                    <button id="wrong-bird-btn" class="btn btn-link">Wrong bird? Search manually</button>
+                    <button id="wrong-bird-btn" class="btn-link">Wrong bird? Search manually</button>
                 </div>
 
                 <div id="error-message" class="hidden">
                     <p id="error-text"></p>
                 </div>
 
-                <div id="result-controls">
-                    <button id="scan-again-btn" class="btn btn-primary">Scan Another Card</button>
-                </div>
+                <button id="dismiss-btn" class="dismiss-btn">Dismiss</button>
             </div>
-        </main>
+        </div>
 
         <footer>
-            <p>Point your camera at a Wingspan card to hear the bird's call</p>
-            <p class="credits">Sounds from <a href="https://xeno-canto.org" target="_blank">Xeno-canto</a></p>
+            <p>Point camera at a Wingspan card &middot; Tap SCAN</p>
+            <p class="credits">Sounds from <a href="https://xeno-canto.org" target="_blank">Xeno-canto</a> &amp; <a href="https://commons.wikimedia.org" target="_blank">Wikimedia</a></p>
         </footer>
     </div>
 
