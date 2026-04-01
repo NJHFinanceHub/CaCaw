@@ -34,6 +34,15 @@
                     <button id="upload-btn" class="btn btn-secondary">Upload Photo</button>
                     <input type="file" id="file-input" accept="image/*" capture="environment" class="hidden">
                 </div>
+
+                <!-- Manual search -->
+                <div id="manual-search">
+                    <p class="search-label">Or search by name:</p>
+                    <div class="search-wrapper">
+                        <input type="text" id="search-input" placeholder="Type bird name..." autocomplete="off">
+                        <div id="search-results" class="hidden"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- Result View -->
@@ -73,6 +82,8 @@
                     <div id="no-sound" class="hidden">
                         <p>No recordings found for this bird.</p>
                     </div>
+
+                    <button id="wrong-bird-btn" class="btn btn-link">Wrong bird? Search manually</button>
                 </div>
 
                 <div id="error-message" class="hidden">
