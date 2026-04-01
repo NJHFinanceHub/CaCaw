@@ -499,84 +499,159 @@ function editDistance(a, b) {
     return matrix[b.length][a.length];
 }
 
-// ---- Xeno-canto API ----
+// ---- Sound Fetching ----
+// Strategy 1: Wikimedia Commons (native CORS support)
+// Strategy 2: Xeno-canto iframe embed (no CORS needed)
 
-// List of CORS proxies to try (xeno-canto doesn't support CORS from browsers)
-const CORS_PROXIES = [
-    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    (url) => url, // try direct as last resort
-];
-
-async function fetchWithCorsRetry(url) {
-    for (const proxyFn of CORS_PROXIES) {
-        const proxyUrl = proxyFn(url);
-        try {
-            const response = await fetch(proxyUrl);
-            if (response.ok) {
-                return response;
-            }
-        } catch (err) {
-            console.log(`CORS proxy failed: ${proxyUrl}`, err.message);
-        }
-    }
-    return null;
-}
+const xcEmbedPlayer = $('#xc-embed-player');
+const xcIframe = $('#xc-iframe');
+const xcEmbedInfo = $('#xc-embed-info');
 
 async function fetchBirdSound(birdName) {
     loadingText.textContent = 'Finding bird sounds...';
 
-    // Check cache
     if (audioCache[birdName]) return audioCache[birdName];
 
     const scientificName = BIRD_DB[birdName] || '';
 
-    // Try scientific name first (more reliable on xeno-canto)
-    const searches = [];
-    if (scientificName) {
-        searches.push(scientificName);
+    // Try Wikimedia Commons first (has CORS support)
+    const wikiResult = await fetchFromWikimedia(birdName, scientificName);
+    if (wikiResult) {
+        audioCache[birdName] = wikiResult;
+        return wikiResult;
     }
-    searches.push(birdName.replace(/[']/g, '').replace(/[-]/g, ' '));
+
+    // Try xeno-canto via JSONP-style approach (allorigins wrapper)
+    const xcResult = await fetchFromXenoCanto(birdName, scientificName);
+    if (xcResult) {
+        audioCache[birdName] = xcResult;
+        return xcResult;
+    }
+
+    return null;
+}
+
+async function fetchFromWikimedia(birdName, scientificName) {
+    // Search Wikimedia Commons for audio files of this bird
+    const searches = [scientificName, birdName].filter(Boolean);
+
+    for (const term of searches) {
+        try {
+            const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term + ' bird sound')}&gsrnamespace=6&gsrlimit=10&prop=imageinfo&iiprop=url|mime|extmetadata&format=json&origin=*`;
+            const resp = await fetch(url);
+            if (!resp.ok) continue;
+            const data = await resp.json();
+
+            if (!data.query || !data.query.pages) continue;
+
+            // Find audio files (ogg, mp3, wav)
+            const pages = Object.values(data.query.pages);
+            for (const page of pages) {
+                if (!page.imageinfo) continue;
+                const info = page.imageinfo[0];
+                const mime = info.mime || '';
+                if (mime.startsWith('audio/')) {
+                    const meta = info.extmetadata || {};
+                    return {
+                        type: 'wikimedia',
+                        url: info.url,
+                        source: 'Wikimedia Commons',
+                        description: meta.ImageDescription ? meta.ImageDescription.value.replace(/<[^>]*>/g, '') : '',
+                        scientificName: scientificName
+                    };
+                }
+            }
+        } catch (err) {
+            console.error('Wikimedia search failed:', err);
+        }
+    }
+
+    // Also try the Wikipedia article for the bird to find audio files
+    for (const term of searches) {
+        try {
+            const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(term)}&prop=images&format=json&origin=*`;
+            const resp = await fetch(url);
+            if (!resp.ok) continue;
+            const data = await resp.json();
+
+            if (!data.query || !data.query.pages) continue;
+
+            const pages = Object.values(data.query.pages);
+            for (const page of pages) {
+                if (!page.images) continue;
+                for (const img of page.images) {
+                    const title = img.title || '';
+                    if (title.match(/\.(ogg|mp3|wav|flac)$/i)) {
+                        // Get the actual file URL
+                        const fileUrl = `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=imageinfo&iiprop=url|mime&format=json&origin=*`;
+                        const fileResp = await fetch(fileUrl);
+                        if (!fileResp.ok) continue;
+                        const fileData = await fileResp.json();
+                        const filePages = Object.values(fileData.query.pages);
+                        for (const fp of filePages) {
+                            if (fp.imageinfo) {
+                                const fi = fp.imageinfo[0];
+                                if (fi.mime && fi.mime.startsWith('audio/')) {
+                                    return {
+                                        type: 'wikimedia',
+                                        url: fi.url,
+                                        source: 'Wikimedia Commons',
+                                        description: title.replace('File:', '').replace(/\.[^.]+$/, ''),
+                                        scientificName: scientificName
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Wikipedia search failed:', err);
+        }
+    }
+
+    return null;
+}
+
+async function fetchFromXenoCanto(birdName, scientificName) {
+    const searches = [scientificName, birdName.replace(/[']/g, '').replace(/[-]/g, ' ')].filter(Boolean);
 
     for (const searchTerm of searches) {
+        // Use allorigins as a JSON wrapper (more reliable than raw proxy)
         const apiUrl = `https://xeno-canto.org/api/2/recordings?query=${encodeURIComponent(searchTerm)}+q:A&page=1`;
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
 
         try {
-            const response = await fetchWithCorsRetry(apiUrl);
-            if (!response) continue;
+            const response = await fetch(proxyUrl);
+            if (!response.ok) continue;
 
-            const data = await response.json();
+            const wrapper = await response.json();
+            const data = JSON.parse(wrapper.contents);
 
             if (data.recordings && data.recordings.length > 0) {
-                // Prefer song over call, and higher quality
+                // Sort: prefer songs, then by quality
                 const sorted = [...data.recordings].sort((a, b) => {
-                    // Prefer songs
                     const aIsSong = a.type && a.type.toLowerCase().includes('song') ? 1 : 0;
                     const bIsSong = b.type && b.type.toLowerCase().includes('song') ? 1 : 0;
                     if (bIsSong !== aIsSong) return bIsSong - aIsSong;
-                    // Then by quality
                     const qOrder = { A: 5, B: 4, C: 3, D: 2, E: 1 };
                     return (qOrder[b.q] || 0) - (qOrder[a.q] || 0);
                 });
 
                 const recording = sorted[0];
-                let audioUrl = recording.file;
-                if (audioUrl.startsWith('//')) audioUrl = 'https:' + audioUrl;
-
-                const result = {
-                    url: audioUrl,
+                return {
+                    type: 'xeno-canto',
+                    id: recording.id,
+                    url: (recording.file.startsWith('//') ? 'https:' : '') + recording.file,
                     recordist: recording.rec,
                     country: recording.cnt,
-                    type: recording.type,
+                    recordingType: recording.type,
                     quality: recording.q,
                     scientificName: recording.gen + ' ' + recording.sp
                 };
-
-                audioCache[birdName] = result;
-                return result;
             }
         } catch (err) {
-            console.error(`Search failed for "${searchTerm}":`, err);
+            console.error(`Xeno-canto search failed for "${searchTerm}":`, err);
         }
     }
 
@@ -586,17 +661,38 @@ async function fetchBirdSound(birdName) {
 // ---- Audio Playback ----
 
 function setupAudioPlayer(soundData) {
-    let audioUrl = soundData.url;
+    // Hide both players first
+    hide(audioPlayer);
+    hide(xcEmbedPlayer);
 
-    // Don't set crossOrigin - let the browser handle it
-    birdAudio.removeAttribute('crossorigin');
-    birdAudio.src = audioUrl;
-    recordingInfo.textContent = `Recorded by ${soundData.recordist} in ${soundData.country} (${soundData.type})`;
+    if (soundData.type === 'wikimedia') {
+        // Direct audio playback - Wikimedia supports CORS
+        birdAudio.src = soundData.url;
+        recordingInfo.textContent = soundData.description || `Source: ${soundData.source}`;
+        show(audioPlayer);
+        hide(noSound);
+        playAudio();
+    } else if (soundData.type === 'xeno-canto') {
+        // Try direct audio first
+        birdAudio.src = soundData.url;
+        recordingInfo.textContent = `Recorded by ${soundData.recordist} in ${soundData.country} (${soundData.recordingType})`;
+        show(audioPlayer);
+        hide(noSound);
 
-    show(audioPlayer);
-    hide(noSound);
-
-    playAudio();
+        // Attempt to play; if it fails, fall back to iframe embed
+        birdAudio.play().then(() => {
+            playIcon.textContent = '\u23F8';
+            isPlaying = true;
+        }).catch(() => {
+            console.log('Direct XC audio failed, using embed player');
+            hide(audioPlayer);
+            // Use xeno-canto's iframe embed player (no CORS needed)
+            xcIframe.src = `https://xeno-canto.org/${soundData.id}/embed?simple=1`;
+            xcEmbedInfo.textContent = `Recorded by ${soundData.recordist} in ${soundData.country}`;
+            show(xcEmbedPlayer);
+        });
+        return; // Don't call playAudio since we handle it above
+    }
 }
 
 function playAudio() {
@@ -607,13 +703,6 @@ function playAudio() {
     } else {
         birdAudio.play().catch(err => {
             console.error('Audio playback error:', err);
-            // If direct play fails, try through CORS proxy
-            const currentSrc = birdAudio.src;
-            if (!currentSrc.includes('corsproxy')) {
-                const proxied = `https://corsproxy.io/?${encodeURIComponent(currentSrc)}`;
-                birdAudio.src = proxied;
-                birdAudio.play().catch(e => console.error('Proxied playback also failed:', e));
-            }
         });
         playIcon.textContent = '\u23F8';
         isPlaying = true;
@@ -691,11 +780,10 @@ async function playBirdByName(bird) {
     hide(capturedImageContainer);
     hide(birdResult);
     hide(errorMessage);
+    hide(xcEmbedPlayer);
     show(loading);
     loadingText.textContent = 'Finding bird sounds...';
-    isPlaying = false;
-    birdAudio.pause();
-    audioProgressBar.style.width = '0%';
+    resetAudioState();
 
     birdNameEl.textContent = bird;
     birdScientific.textContent = BIRD_DB[bird] || '';
@@ -724,11 +812,10 @@ async function processImage(imageDataUrl) {
     hide(birdResult);
     hide(errorMessage);
     hide(audioPlayer);
+    hide(xcEmbedPlayer);
     hide(noSound);
     show(loading);
-    isPlaying = false;
-    birdAudio.pause();
-    audioProgressBar.style.width = '0%';
+    resetAudioState();
 
     try {
         const bird = await recognizeBirdName(imageDataUrl);
@@ -766,11 +853,18 @@ function showError(message) {
     show(errorMessage);
 }
 
+function resetAudioState() {
+    isPlaying = false;
+    birdAudio.pause();
+    birdAudio.removeAttribute('src');
+    xcIframe.removeAttribute('src');
+    audioProgressBar.style.width = '0%';
+}
+
 function resetToCamera() {
     hide(resultSection);
     show(cameraSection);
-    birdAudio.pause();
-    isPlaying = false;
+    resetAudioState();
 
     if (!stream) {
         show(cameraPlaceholder);

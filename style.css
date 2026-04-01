@@ -370,6 +370,26 @@ main {
     font-size: 0.9rem;
 }
 
+/* Xeno-canto embed */
+#xc-embed-player {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.embed-info {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+#xc-iframe {
+    width: 100%;
+    height: 230px;
+    border-radius: 8px;
+}
+
 #no-sound {
     background: var(--card-bg);
     border-radius: var(--radius);
