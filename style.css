@@ -1,0 +1,342 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --primary: #2d5a27;
+    --primary-light: #4a8c3f;
+    --secondary: #c47a2b;
+    --bg: #1a1a2e;
+    --bg-light: #232340;
+    --text: #f0f0f0;
+    --text-muted: #a0a0b0;
+    --card-bg: #2a2a4a;
+    --radius: 12px;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    overflow-x: hidden;
+}
+
+#app {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header */
+header {
+    text-align: center;
+    padding: 20px 16px 10px;
+}
+
+header h1 {
+    font-size: 2.2rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    color: var(--secondary);
+    text-transform: uppercase;
+}
+
+.subtitle {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+/* Main */
+main {
+    flex: 1;
+    padding: 10px 16px;
+}
+
+/* Camera Section */
+#video-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    background: #000;
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+#camera {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+#camera-placeholder {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-light);
+    color: var(--text-muted);
+}
+
+.placeholder-icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+}
+
+/* Controls */
+#controls {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    align-items: center;
+    padding: 8px 0;
+}
+
+.btn {
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    border-radius: 50px;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.btn:active {
+    transform: scale(0.95);
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    padding: 14px 28px;
+}
+
+.btn-primary:hover {
+    background: var(--primary-light);
+}
+
+.btn-secondary {
+    background: var(--card-bg);
+    color: var(--text);
+    padding: 14px 28px;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.btn-capture {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.capture-ring {
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    border: 3px solid var(--bg);
+    display: block;
+}
+
+.btn-capture:active .capture-ring {
+    background: rgba(0,0,0,0.15);
+}
+
+/* Result Section */
+#captured-image-container {
+    width: 100%;
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 16px;
+    background: #000;
+}
+
+#captured-image {
+    width: 100%;
+    display: block;
+}
+
+/* Loading */
+#loading {
+    text-align: center;
+    padding: 24px;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(255,255,255,0.15);
+    border-top-color: var(--secondary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+#loading-text {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* Bird Result */
+.bird-info {
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+#bird-name {
+    font-size: 1.5rem;
+    color: var(--secondary);
+    margin-bottom: 4px;
+}
+
+.scientific-name {
+    font-style: italic;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+/* Audio Player */
+#audio-player {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.audio-controls {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.btn-play {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.btn-play:hover {
+    background: var(--primary-light);
+}
+
+.play-icon {
+    font-size: 1.3rem;
+    margin-left: 3px;
+}
+
+.audio-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.audio-info p {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#audio-progress {
+    height: 4px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+#audio-progress-bar {
+    height: 100%;
+    background: var(--secondary);
+    width: 0%;
+    transition: width 0.3s;
+    border-radius: 2px;
+}
+
+/* Error */
+#error-message {
+    background: rgba(220, 53, 69, 0.15);
+    border: 1px solid rgba(220, 53, 69, 0.3);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+#error-text {
+    color: #ff8a8a;
+    font-size: 0.9rem;
+}
+
+#no-sound {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 16px;
+    color: var(--text-muted);
+}
+
+/* Result Controls */
+#result-controls {
+    text-align: center;
+    padding: 8px 0;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 16px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+footer .credits {
+    margin-top: 4px;
+}
+
+footer a {
+    color: var(--secondary);
+    text-decoration: none;
+}
+
+/* Utility */
+.hidden {
+    display: none !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+#bird-result:not(.hidden) {
+    animation: fadeIn 0.4s ease;
+}
