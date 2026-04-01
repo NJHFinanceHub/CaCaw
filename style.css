@@ -369,7 +369,7 @@ header h1 {
     border-top: 1px solid rgba(116,198,157,0.15);
 }
 
-.result-sheet.visible {
+.result-sheet.open {
     transform: translateY(0);
 }
 

@@ -346,43 +346,58 @@ async function recognizeBirdName(imageDataUrl) {
     const img = new Image();
     await new Promise((resolve) => { img.onload = resolve; img.src = imageDataUrl; });
 
+    const worker = await getWorker();
+    let allOcrText = '';
+
+    // Pass 1: Try each crop region with default threshold (fast — 4 OCR calls max)
     const crops = [
         { name: 'top-right name', top: 0, bottom: 0.15, left: 0.3, right: 1.0 },
         { name: 'top banner', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
         { name: 'upper third', top: 0, bottom: 0.35, left: 0.0, right: 1.0 },
         { name: 'full card', top: 0, bottom: 1.0, left: 0.0, right: 1.0 },
     ];
-    const thresholds = [140, 100, 180];
-
-    const worker = await getWorker();
-    let allOcrText = '';
 
     for (const crop of crops) {
-        for (const thresh of thresholds) {
-            // Try normal and inverted
-            for (const invert of [false, true]) {
-                loadingText.textContent = `Scanning ${crop.name}...`;
-                const processed = preprocessImage(img, crop, thresh, invert);
-                const { data } = await worker.recognize(processed);
-                const text = data.text.trim();
-                if (text.length > 2) {
-                    console.log(`OCR [${crop.name} t=${thresh} inv=${invert}]:`, text);
-                    allOcrText += ' ' + text;
-
-                    const match = findBirdInText(allOcrText);
-                    if (match) {
-                        console.log(`Match found: ${match}`);
-                        return match;
-                    }
-                }
-            }
+        loadingText.textContent = `Scanning ${crop.name}...`;
+        const processed = preprocessImage(img, crop, 140, false);
+        const { data } = await worker.recognize(processed);
+        const text = data.text.trim();
+        if (text.length > 2) {
+            console.log(`OCR [${crop.name}]:`, text);
+            allOcrText += ' ' + text;
+            const match = findBirdInText(allOcrText);
+            if (match) { console.log(`Match: ${match}`); return match; }
         }
     }
 
+    // Check scientific names from pass 1
     const sciMatch = findScientificName(allOcrText);
     if (sciMatch) return sciMatch;
 
-    return null;
+    // Pass 2: Only if pass 1 failed — try alternate thresholds + inverted on top area (4 more calls max)
+    loadingText.textContent = 'Trying enhanced scan...';
+    const retryCrop = { name: 'top banner', top: 0, bottom: 0.22, left: 0.0, right: 1.0 };
+    const retryConfigs = [
+        { threshold: 100, invert: false },
+        { threshold: 180, invert: false },
+        { threshold: 140, invert: true },
+        { threshold: 100, invert: true },
+    ];
+
+    for (const cfg of retryConfigs) {
+        const processed = preprocessImage(img, retryCrop, cfg.threshold, cfg.invert);
+        const { data } = await worker.recognize(processed);
+        const text = data.text.trim();
+        if (text.length > 2) {
+            console.log(`OCR [retry t=${cfg.threshold} inv=${cfg.invert}]:`, text);
+            allOcrText += ' ' + text;
+            const match = findBirdInText(allOcrText);
+            if (match) { console.log(`Match: ${match}`); return match; }
+        }
+    }
+
+    // Final check for scientific names across all text
+    return findScientificName(allOcrText);
 }
 
 function findScientificName(text) {
