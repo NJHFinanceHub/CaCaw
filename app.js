@@ -257,6 +257,9 @@ async function startCamera() {
         camera.srcObject = stream;
     } catch (err) {
         console.error('Camera error:', err);
+        // Show helpful message - user can still use upload or search
+        showSheet();
+        showError('Camera not available. Use "Upload Photo" or search by name instead.');
     }
 }
 
@@ -479,25 +482,46 @@ function editDistance(a, b) {
 
 // ---- Sound Fetching ----
 
+function withTimeout(promise, ms) {
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))
+    ]);
+}
+
 async function fetchBirdSound(birdName) {
     if (sheetLoadingText) sheetLoadingText.textContent = 'Finding bird sounds...';
     if (audioCache[birdName]) return audioCache[birdName];
     const scientificName = BIRD_DB[birdName] || '';
 
-    const wikiResult = await fetchFromWikimedia(birdName, scientificName);
-    if (wikiResult) { audioCache[birdName] = wikiResult; return wikiResult; }
+    try {
+        const wikiResult = await withTimeout(fetchFromWikimedia(birdName, scientificName), 8000);
+        if (wikiResult) { audioCache[birdName] = wikiResult; return wikiResult; }
+    } catch (err) { console.log('Wikimedia timed out, trying xeno-canto...'); }
 
-    const xcResult = await fetchFromXenoCanto(birdName, scientificName);
-    if (xcResult) { audioCache[birdName] = xcResult; return xcResult; }
+    try {
+        if (sheetLoadingText) sheetLoadingText.textContent = 'Checking xeno-canto...';
+        const xcResult = await withTimeout(fetchFromXenoCanto(birdName, scientificName), 8000);
+        if (xcResult) { audioCache[birdName] = xcResult; return xcResult; }
+    } catch (err) { console.log('Xeno-canto timed out'); }
 
     return null;
 }
 
 async function fetchFromWikimedia(birdName, scientificName) {
-    const searches = [scientificName, birdName].filter(Boolean);
+    // Try multiple search variations to maximize hits
+    const searchTerms = [
+        scientificName ? scientificName + ' bird sound' : null,
+        scientificName ? scientificName + ' call' : null,
+        birdName + ' bird sound',
+        birdName + ' call',
+        scientificName || null,
+    ].filter(Boolean);
+    // Deduplicate
+    const searches = [...new Set(searchTerms)];
     for (const term of searches) {
         try {
-            const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term + ' bird sound')}&gsrnamespace=6&gsrlimit=10&prop=imageinfo&iiprop=url|mime|extmetadata&format=json&origin=*`;
+            const url = `https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(term)}&gsrnamespace=6&gsrlimit=10&prop=imageinfo&iiprop=url|mime|extmetadata&format=json&origin=*`;
             const resp = await fetch(url);
             if (!resp.ok) continue;
             const data = await resp.json();
@@ -515,7 +539,9 @@ async function fetchFromWikimedia(birdName, scientificName) {
         } catch (err) { console.error('Wikimedia search failed:', err); }
     }
 
-    for (const term of searches) {
+    // Also check Wikipedia article for linked audio files
+    const wikiSearches = [birdName, scientificName].filter(Boolean);
+    for (const term of wikiSearches) {
         try {
             const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(term)}&prop=images&format=json&origin=*`;
             const resp = await fetch(url);
@@ -548,7 +574,7 @@ async function fetchFromWikimedia(birdName, scientificName) {
 async function fetchFromXenoCanto(birdName, scientificName) {
     const searches = [scientificName, birdName.replace(/[']/g, '').replace(/[-]/g, ' ')].filter(Boolean);
     for (const searchTerm of searches) {
-        const apiUrl = `https://xeno-canto.org/api/2/recordings?query=${encodeURIComponent(searchTerm)}+q:A&page=1`;
+        const apiUrl = `https://xeno-canto.org/api/2/recordings?query=${encodeURIComponent(searchTerm)}&page=1`;
         const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
         try {
             const response = await fetch(proxyUrl);
@@ -780,6 +806,7 @@ function showError(message) {
 // ---- Event Listeners ----
 
 scanBtn.addEventListener('click', () => {
+    if (scanBtn.classList.contains('scanning')) return; // prevent double-tap
     if (!stream) { startCamera(); return; }
     const imageData = captureFrame();
     processImage(imageData);
