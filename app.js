@@ -276,6 +276,9 @@ function captureFrame() {
 
 async function getWorker() {
     if (!tesseractWorker) {
+        if (typeof Tesseract === 'undefined') {
+            throw new Error('OCR library failed to load. Check your internet connection.');
+        }
         tesseractWorker = await Tesseract.createWorker('eng');
     }
     return tesseractWorker;
@@ -808,6 +811,7 @@ function showError(message) {
 scanBtn.addEventListener('click', () => {
     if (scanBtn.classList.contains('scanning')) return; // prevent double-tap
     if (!stream) { startCamera(); return; }
+    hideSheet(); // close any open result before new scan
     const imageData = captureFrame();
     processImage(imageData);
 });
