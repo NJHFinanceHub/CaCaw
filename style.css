@@ -385,6 +385,26 @@ header h1 {
     padding: 4px 20px 28px;
 }
 
+/* Sheet loading state */
+#sheet-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+}
+
+#sheet-loading .scan-spinner {
+    margin-bottom: 14px;
+}
+
+#sheet-loading p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+    text-align: center;
+}
+
 /* Bird result info */
 .bird-info {
     text-align: center;

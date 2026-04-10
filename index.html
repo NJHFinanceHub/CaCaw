@@ -72,9 +72,14 @@
         </div>
 
         <!-- Result bottom sheet -->
-        <div id="result-sheet" class="result-sheet hidden">
+        <div id="result-sheet" class="result-sheet">
             <div class="sheet-handle"></div>
             <div class="sheet-content">
+                <div id="sheet-loading" class="hidden">
+                    <div class="scan-spinner"></div>
+                    <p id="sheet-loading-text">Finding bird sounds...</p>
+                </div>
+
                 <div id="bird-result" class="hidden">
                     <div class="bird-info">
                         <h2 id="bird-name"></h2>

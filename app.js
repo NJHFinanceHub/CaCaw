@@ -31,6 +31,8 @@ const wrongBirdBtn = $('#wrong-bird-btn');
 const processingCanvas = $('#processing-canvas');
 const searchInput = $('#search-input');
 const searchResults = $('#search-results');
+const sheetLoading = $('#sheet-loading');
+const sheetLoadingText = $('#sheet-loading-text');
 
 let stream = null;
 let isPlaying = false;
@@ -478,7 +480,7 @@ function editDistance(a, b) {
 // ---- Sound Fetching ----
 
 async function fetchBirdSound(birdName) {
-    loadingText.textContent = 'Finding bird sounds...';
+    if (sheetLoadingText) sheetLoadingText.textContent = 'Finding bird sounds...';
     if (audioCache[birdName]) return audioCache[birdName];
     const scientificName = BIRD_DB[birdName] || '';
 
@@ -629,16 +631,18 @@ birdAudio.addEventListener('ended', () => {
 // ---- UI: Bottom Sheet ----
 
 function showSheet() {
-    show(resultSheet);
     requestAnimationFrame(() => resultSheet.classList.add('open'));
 }
 
 function hideSheet() {
     resultSheet.classList.remove('open');
     setTimeout(() => {
-        hide(resultSheet);
         hide(birdResult);
         hide(errorMessage);
+        hide(sheetLoading);
+        hide(audioPlayer);
+        hide(xcEmbedPlayer);
+        hide(noSound);
     }, 350);
     resetAudioState();
 }
@@ -693,15 +697,17 @@ async function playBirdByName(bird) {
     hide(audioPlayer);
     hide(xcEmbedPlayer);
     hide(noSound);
-    show(scanLoading);
-    loadingText.textContent = 'Finding bird sounds...';
+
+    // Show loading inside the sheet (not on camera)
+    sheetLoadingText.textContent = 'Finding bird sounds...';
+    show(sheetLoading);
     showSheet();
 
     birdNameEl.textContent = bird;
     birdScientific.textContent = BIRD_DB[bird] || '';
 
     const soundData = await fetchBirdSound(bird);
-    hide(scanLoading);
+    hide(sheetLoading);
     show(birdResult);
 
     if (soundData) {
@@ -721,6 +727,7 @@ async function processImage(imageDataUrl) {
     hide(audioPlayer);
     hide(xcEmbedPlayer);
     hide(noSound);
+    hide(sheetLoading);
     show(scanLoading);
     scanBtn.classList.add('scanning');
 
@@ -734,13 +741,17 @@ async function processImage(imageDataUrl) {
             return;
         }
 
-        birdNameEl.textContent = bird;
-        loadingText.textContent = 'Finding bird sounds...';
-
-        const soundData = await fetchBirdSound(bird);
+        // OCR done — hide camera overlay, show sheet with in-sheet loading
         hide(scanLoading);
         scanBtn.classList.remove('scanning');
+        birdNameEl.textContent = bird;
+        birdScientific.textContent = BIRD_DB[bird] || '';
+        sheetLoadingText.textContent = `Found ${bird}! Loading sounds...`;
+        show(sheetLoading);
         showSheet();
+
+        const soundData = await fetchBirdSound(bird);
+        hide(sheetLoading);
         show(birdResult);
 
         if (soundData) {
@@ -754,6 +765,7 @@ async function processImage(imageDataUrl) {
     } catch (err) {
         console.error('Processing error:', err);
         hide(scanLoading);
+        hide(sheetLoading);
         scanBtn.classList.remove('scanning');
         showSheet();
         showError('Something went wrong. Try again or search manually.');
