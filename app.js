@@ -1,19 +1,26 @@
-// CaCaw - Wingspan Bird Sound Scanner
+// CaCaw WingDex - Wingspan Bird Scanner (Pokedex edition)
 const $ = (sel) => document.querySelector(sel);
-const show = (el) => el.classList.remove('hidden');
-const hide = (el) => el.classList.add('hidden');
+const show = (el) => el && el.classList.remove('hidden');
+const hide = (el) => el && el.classList.add('hidden');
 
-// DOM elements - matching new UI
+// DOM elements
 const camera = $('#camera');
+const cameraView = $('#camera-view');
+const entryView = $('#entry-view');
 const scanBtn = $('#scan-btn');
 const uploadBtn = $('#upload-btn');
 const fileInput = $('#file-input');
+const backBtn = $('#back-btn');
+const speakBtn = $('#speak-btn');
 const scanLoading = $('#scan-loading');
 const loadingText = $('#loading-text');
-const resultSheet = $('#result-sheet');
-const birdResult = $('#bird-result');
-const birdNameEl = $('#bird-name');
-const birdScientific = $('#bird-scientific');
+const entryNumber = $('#entry-number');
+const entryName = $('#entry-name');
+const entrySci = $('#entry-sci');
+const entryFact = $('#entry-fact');
+const entryStatus = $('#entry-status');
+const entryPhoto = $('#entry-photo');
+const entryPhotoPlaceholder = $('#entry-photo-placeholder');
 const audioPlayer = $('#audio-player');
 const playBtn = $('#play-btn');
 const playIcon = $('.play-icon');
@@ -26,21 +33,24 @@ const xcEmbedInfo = $('#xc-embed-info');
 const noSound = $('#no-sound');
 const errorMessage = $('#error-message');
 const errorText = $('#error-text');
-const dismissBtn = $('#dismiss-btn');
-const wrongBirdBtn = $('#wrong-bird-btn');
 const processingCanvas = $('#processing-canvas');
 const searchInput = $('#search-input');
 const searchResults = $('#search-results');
-const sheetLoading = $('#sheet-loading');
-const sheetLoadingText = $('#sheet-loading-text');
+const ledScan = $('#led-scan');
+const ledVoice = $('#led-voice');
+const ledSound = $('#led-sound');
 
 let stream = null;
 let isPlaying = false;
 let tesseractWorker = null;
+let currentBird = null;
+let typewriterTimer = null;
+let speechUnlocked = false;
 
 // ---- Bird Database ----
+// Covers Wingspan base game, European and Oceania expansions.
 const BIRD_DB = {
-    "Abbott's Booby": "Papasula abbotti",
+    // --- Base game (North America) ---
     "Acorn Woodpecker": "Melanerpes formicivorus",
     "American Avocet": "Recurvirostra americana",
     "American Bittern": "Botaurus lentiginosus",
@@ -49,26 +59,46 @@ const BIRD_DB = {
     "American Goldfinch": "Spinus tristis",
     "American Kestrel": "Falco sparverius",
     "American Oystercatcher": "Haematopus palliatus",
+    "American Redstart": "Setophaga ruticilla",
     "American Robin": "Turdus migratorius",
     "American White Pelican": "Pelecanus erythrorhynchos",
+    "American Woodcock": "Scolopax minor",
+    "Anhinga": "Anhinga anhinga",
     "Anna's Hummingbird": "Calypte anna",
+    "Ash-Throated Flycatcher": "Myiarchus cinerascens",
     "Atlantic Puffin": "Fratercula arctica",
+    "Baird's Sparrow": "Centronyx bairdii",
     "Bald Eagle": "Haliaeetus leucocephalus",
     "Baltimore Oriole": "Icterus galbula",
     "Barn Owl": "Tyto alba",
     "Barn Swallow": "Hirundo rustica",
     "Barred Owl": "Strix varia",
+    "Barrow's Goldeneye": "Bucephala islandica",
+    "Bell's Vireo": "Vireo bellii",
     "Belted Kingfisher": "Megaceryle alcyon",
+    "Bewick's Wren": "Thryomanes bewickii",
     "Black Skimmer": "Rynchops niger",
+    "Black Tern": "Chlidonias niger",
     "Black Vulture": "Coragyps atratus",
+    "Black-Bellied Whistling-Duck": "Dendrocygna autumnalis",
+    "Black-Billed Magpie": "Pica hudsonia",
     "Black-Chinned Hummingbird": "Archilochus alexandri",
+    "Black-Crowned Night-Heron": "Nycticorax nycticorax",
+    "Black-Necked Stilt": "Himantopus mexicanus",
+    "Blue Grosbeak": "Passerina caerulea",
     "Blue Jay": "Cyanocitta cristata",
     "Blue-Gray Gnatcatcher": "Polioptila caerulea",
+    "Blue-Winged Warbler": "Vermivora cyanoptera",
     "Bobolink": "Dolichonyx oryzivorus",
-    "Bonelli's Eagle": "Aquila fasciata",
+    "Brant": "Branta bernicla",
+    "Brewer's Blackbird": "Euphagus cyanocephalus",
+    "Broad-Tailed Hummingbird": "Selasphorus platycercus",
     "Broad-Winged Hawk": "Buteo platypterus",
+    "Bronzed Cowbird": "Molothrus aeneus",
+    "Brown Creeper": "Certhia americana",
     "Brown Pelican": "Pelecanus occidentalis",
     "Brown-Headed Cowbird": "Molothrus ater",
+    "Burrowing Owl": "Athene cunicularia",
     "Bushtit": "Psaltriparus minimus",
     "California Condor": "Gymnogyps californianus",
     "California Quail": "Callipepla californica",
@@ -76,15 +106,26 @@ const BIRD_DB = {
     "Canvasback": "Aythya valisineria",
     "Carolina Chickadee": "Poecile carolinensis",
     "Carolina Wren": "Thryothorus ludovicianus",
+    "Caspian Tern": "Hydroprogne caspia",
+    "Cassin's Finch": "Haemorhous cassinii",
+    "Cassin's Sparrow": "Peucaea cassinii",
     "Cedar Waxwing": "Bombycilla cedrorum",
-    "Chimney Swift": "Chaetura pelagica",
+    "Cerulean Warbler": "Setophaga cerulea",
+    "Chestnut-Collared Longspur": "Calcarius ornatus",
     "Chihuahuan Raven": "Corvus cryptoleucus",
+    "Chimney Swift": "Chaetura pelagica",
+    "Chipping Sparrow": "Spizella passerina",
+    "Clark's Grebe": "Aechmophorus clarkii",
     "Clark's Nutcracker": "Nucifraga columbiana",
+    "Cliff Swallow": "Petrochelidon pyrrhonota",
     "Common Grackle": "Quiscalus quiscula",
     "Common Loon": "Gavia immer",
+    "Common Merganser": "Mergus merganser",
+    "Common Nighthawk": "Chordeiles minor",
     "Common Raven": "Corvus corax",
     "Common Yellowthroat": "Geothlypis trichas",
     "Cooper's Hawk": "Accipiter cooperii",
+    "Crested Caracara": "Caracara plancus",
     "Dark-Eyed Junco": "Junco hyemalis",
     "Dickcissel": "Spiza americana",
     "Double-Crested Cormorant": "Nannopterum auritum",
@@ -96,14 +137,19 @@ const BIRD_DB = {
     "Eastern Screech-Owl": "Megascops asio",
     "Eastern Towhee": "Pipilo erythrophthalmus",
     "Eurasian Collared-Dove": "Streptopelia decaocto",
-    "European Goldfinch": "Carduelis carduelis",
+    "European Starling": "Sturnus vulgaris",
     "Evening Grosbeak": "Coccothraustes vespertinus",
+    "Ferruginous Hawk": "Buteo regalis",
+    "Forster's Tern": "Sterna forsteri",
     "Franklin's Gull": "Leucophaeus pipixcan",
     "Golden Eagle": "Aquila chrysaetos",
+    "Grasshopper Sparrow": "Ammodramus savannarum",
+    "Gray Catbird": "Dumetella carolinensis",
     "Great Blue Heron": "Ardea herodias",
     "Great Crested Flycatcher": "Myiarchus crinitus",
+    "Great Egret": "Ardea alba",
     "Great Horned Owl": "Bubo virginianus",
-    "Greater Flamingo": "Phoenicopterus roseus",
+    "Greater Prairie-Chicken": "Tympanuchus cupido",
     "Greater Roadrunner": "Geococcyx californianus",
     "Green Heron": "Butorides virescens",
     "Gyrfalcon": "Falco rusticolus",
@@ -111,16 +157,22 @@ const BIRD_DB = {
     "Harlequin Duck": "Histrionicus histrionicus",
     "Harris's Hawk": "Parabuteo unicinctus",
     "Hermit Thrush": "Catharus guttatus",
+    "Hooded Merganser": "Lophodytes cucullatus",
+    "Hooded Warbler": "Setophaga citrina",
     "Horned Lark": "Eremophila alpestris",
     "House Finch": "Haemorhous mexicanus",
     "House Sparrow": "Passer domesticus",
     "House Wren": "Troglodytes aedon",
+    "Inca Dove": "Columbina inca",
     "Indigo Bunting": "Passerina cyanea",
+    "Juniper Titmouse": "Baeolophus ridgwayi",
     "Killdeer": "Charadrius vociferus",
+    "King Rail": "Rallus elegans",
     "Lark Bunting": "Calamospiza melanocorys",
     "Lazuli Bunting": "Passerina amoena",
     "Least Flycatcher": "Empidonax minimus",
     "Lesser Goldfinch": "Spinus psaltria",
+    "Lewis's Woodpecker": "Melanerpes lewis",
     "Lincoln's Sparrow": "Melospiza lincolnii",
     "Loggerhead Shrike": "Lanius ludovicianus",
     "Long-Eared Owl": "Asio otus",
@@ -128,8 +180,10 @@ const BIRD_DB = {
     "Marsh Wren": "Cistothorus palustris",
     "Mississippi Kite": "Ictinia mississippiensis",
     "Mountain Bluebird": "Sialia currucoides",
+    "Mountain Chickadee": "Poecile gambeli",
     "Mourning Dove": "Zenaida macroura",
     "Mourning Warbler": "Geothlypis philadelphia",
+    "Northern Bobwhite": "Colinus virginianus",
     "Northern Cardinal": "Cardinalis cardinalis",
     "Northern Flicker": "Colaptes auratus",
     "Northern Gannet": "Morus bassanus",
@@ -137,9 +191,11 @@ const BIRD_DB = {
     "Northern Mockingbird": "Mimus polyglottos",
     "Northern Pintail": "Anas acuta",
     "Northern Saw-Whet Owl": "Aegolius acadicus",
+    "Northern Shoveler": "Spatula clypeata",
     "Osprey": "Pandion haliaetus",
     "Ovenbird": "Seiurus aurocapilla",
     "Painted Bunting": "Passerina ciris",
+    "Painted Whitestart": "Myioborus pictus",
     "Peregrine Falcon": "Falco peregrinus",
     "Pied-Billed Grebe": "Podilymbus podiceps",
     "Pileated Woodpecker": "Dryocopus pileatus",
@@ -147,12 +203,17 @@ const BIRD_DB = {
     "Pine Siskin": "Spinus pinus",
     "Pine Warbler": "Setophaga pinus",
     "Prairie Falcon": "Falco mexicanus",
+    "Prothonotary Warbler": "Protonotaria citrea",
     "Purple Finch": "Haemorhous purpureus",
+    "Purple Gallinule": "Porphyrio martinica",
     "Purple Martin": "Progne subis",
+    "Pygmy Nuthatch": "Sitta pygmaea",
     "Red Crossbill": "Loxia curvirostra",
     "Red Knot": "Calidris canutus",
     "Red-Bellied Woodpecker": "Melanerpes carolinus",
+    "Red-Breasted Merganser": "Mergus serrator",
     "Red-Breasted Nuthatch": "Sitta canadensis",
+    "Red-Cockaded Woodpecker": "Dryobates borealis",
     "Red-Eyed Vireo": "Vireo olivaceus",
     "Red-Headed Woodpecker": "Melanerpes erythrocephalus",
     "Red-Shouldered Hawk": "Buteo lineatus",
@@ -160,94 +221,241 @@ const BIRD_DB = {
     "Red-Winged Blackbird": "Agelaius phoeniceus",
     "Ring-Billed Gull": "Larus delawarensis",
     "Ring-Necked Duck": "Aythya collaris",
+    "Ring-Necked Pheasant": "Phasianus colchicus",
     "Rose-Breasted Grosbeak": "Pheucticus ludovicianus",
     "Roseate Spoonbill": "Platalea ajaja",
     "Ruby-Crowned Kinglet": "Corthylio calendula",
     "Ruby-Throated Hummingbird": "Archilochus colubris",
     "Ruddy Duck": "Oxyura jamaicensis",
+    "Ruffed Grouse": "Bonasa umbellus",
     "Rufous Hummingbird": "Selasphorus rufus",
     "Sandhill Crane": "Antigone canadensis",
     "Savannah Sparrow": "Passerculus sandwichensis",
     "Say's Phoebe": "Sayornis saya",
+    "Scaled Quail": "Callipepla squamata",
+    "Scarlet Tanager": "Piranga olivacea",
     "Scissor-Tailed Flycatcher": "Tyrannus forficatus",
     "Sharp-Shinned Hawk": "Accipiter striatus",
     "Short-Eared Owl": "Asio flammeus",
     "Snow Bunting": "Plectrophenax nivalis",
     "Snow Goose": "Anser caerulescens",
     "Snowy Egret": "Egretta thula",
-    "Snowy Owl": "Bubo scandiacus",
     "Song Sparrow": "Melospiza melodia",
+    "Spotted Sandpiper": "Actitis macularius",
     "Spotted Towhee": "Pipilo maculatus",
+    "Sprague's Pipit": "Anthus spragueii",
     "Steller's Jay": "Cyanocitta stelleri",
     "Swainson's Hawk": "Buteo swainsoni",
-    "Tree Swallow": "Tachycineta bicolor",
     "Trumpeter Swan": "Cygnus buccinator",
+    "Tree Swallow": "Tachycineta bicolor",
     "Tufted Puffin": "Fratercula cirrhata",
     "Tufted Titmouse": "Baeolophus bicolor",
     "Turkey Vulture": "Cathartes aura",
     "Varied Thrush": "Ixoreus naevius",
+    "Verdin": "Auriparus flaviceps",
     "Vesper Sparrow": "Pooecetes gramineus",
+    "Violet-Green Swallow": "Tachycineta thalassina",
     "Warbling Vireo": "Vireo gilvus",
     "Western Grebe": "Aechmophorus occidentalis",
     "Western Kingbird": "Tyrannus verticalis",
     "Western Meadowlark": "Sturnella neglecta",
     "Western Tanager": "Piranga ludoviciana",
+    "Whimbrel": "Numenius phaeopus",
     "White-Breasted Nuthatch": "Sitta carolinensis",
     "White-Crowned Sparrow": "Zonotrichia leucophrys",
+    "White-Faced Ibis": "Plegadis chihi",
     "White-Throated Sparrow": "Zonotrichia albicollis",
+    "White-Throated Swift": "Aeronautes saxatalis",
     "Wild Turkey": "Meleagris gallopavo",
+    "Willet": "Tringa semipalmata",
     "Willow Flycatcher": "Empidonax traillii",
+    "Willow Ptarmigan": "Lagopus lagopus",
     "Wilson's Snipe": "Gallinago delicata",
     "Winter Wren": "Troglodytes hiemalis",
     "Wood Duck": "Aix sponsa",
+    "Wood Stork": "Mycteria americana",
     "Wood Thrush": "Hylocichla mustelina",
     "Yellow Warbler": "Setophaga petechia",
     "Yellow-Bellied Sapsucker": "Sphyrapicus varius",
+    "Yellow-Billed Cuckoo": "Coccyzus americanus",
+    "Yellow-Breasted Chat": "Icteria virens",
     "Yellow-Headed Blackbird": "Xanthocephalus xanthocephalus",
     "Yellow-Rumped Warbler": "Setophaga coronata",
-    "Eurasian Sparrowhawk": "Accipiter nisus",
-    "Common Buzzard": "Buteo buteo",
-    "Eurasian Jay": "Garrulus glandarius",
-    "European Robin": "Erithacus rubecula",
-    "Common Kingfisher": "Alcedo atthis",
-    "Great Tit": "Parus major",
+
+    // --- European expansion ---
+    "Barnacle Goose": "Branta leucopsis",
+    "Black Redstart": "Phoenicurus ochruros",
+    "Black Woodpecker": "Dryocopus martius",
+    "Black-Headed Gull": "Chroicocephalus ridibundus",
+    "Black-Tailed Godwit": "Limosa limosa",
     "Blue Tit": "Cyanistes caeruleus",
+    "Bohemian Waxwing": "Bombycilla garrulus",
+    "Bonelli's Eagle": "Aquila fasciata",
+    "Carrion Crow": "Corvus corone",
+    "Cetti's Warbler": "Cettia cetti",
+    "Common Blackbird": "Turdus merula",
+    "Common Buzzard": "Buteo buteo",
+    "Common Chaffinch": "Fringilla coelebs",
+    "Common Chiffchaff": "Phylloscopus collybita",
+    "Common Crane": "Grus grus",
+    "Common Cuckoo": "Cuculus canorus",
+    "Common Goldeneye": "Bucephala clangula",
+    "Common Kingfisher": "Alcedo atthis",
+    "Common Little Bittern": "Ixobrychus minutus",
+    "Common Moorhen": "Gallinula chloropus",
+    "Common Nightingale": "Luscinia megarhynchos",
+    "Common Swift": "Apus apus",
+    "Coal Tit": "Periparus ater",
+    "Corn Bunting": "Emberiza calandra",
+    "Corncrake": "Crex crex",
+    "Dunnock": "Prunella modularis",
+    "Eleonora's Falcon": "Falco eleonorae",
+    "Eurasian Blackcap": "Sylvia atricapilla",
+    "Eurasian Bullfinch": "Pyrrhula pyrrhula",
+    "Eurasian Golden Oriole": "Oriolus oriolus",
+    "Eurasian Green Woodpecker": "Picus viridis",
+    "Eurasian Hobby": "Falco subbuteo",
+    "Eurasian Hoopoe": "Upupa epops",
+    "Eurasian Jay": "Garrulus glandarius",
     "Eurasian Magpie": "Pica pica",
+    "Eurasian Nuthatch": "Sitta europaea",
+    "Eurasian Sparrowhawk": "Accipiter nisus",
+    "Eurasian Tree Sparrow": "Passer montanus",
+    "Eurasian Treecreeper": "Certhia familiaris",
+    "European Bee-Eater": "Merops apiaster",
+    "European Goldfinch": "Carduelis carduelis",
+    "European Honey Buzzard": "Pernis apivorus",
+    "European Robin": "Erithacus rubecula",
+    "European Roller": "Coracias garrulus",
+    "European Turtle Dove": "Streptopelia turtur",
+    "Goldcrest": "Regulus regulus",
+    "Great Cormorant": "Phalacrocorax carbo",
+    "Great Crested Grebe": "Podiceps cristatus",
+    "Great Spotted Woodpecker": "Dendrocopos major",
+    "Great Tit": "Parus major",
+    "Greater Flamingo": "Phoenicopterus roseus",
+    "Grey Heron": "Ardea cinerea",
+    "Greylag Goose": "Anser anser",
+    "Griffon Vulture": "Gyps fulvus",
+    "Hawfinch": "Coccothraustes coccothraustes",
+    "Lesser Whitethroat": "Curruca curruca",
+    "Little Owl": "Athene noctua",
+    "Long-Tailed Tit": "Aegithalos caudatus",
+    "Mistle Thrush": "Turdus viscivorus",
+    "Mute Swan": "Cygnus olor",
+    "Northern Lapwing": "Vanellus vanellus",
+    "Red Kite": "Milvus milvus",
+    "Red-Backed Shrike": "Lanius collurio",
+    "Redwing": "Turdus iliacus",
+    "Savi's Warbler": "Locustella luscinioides",
+    "Snowy Owl": "Bubo scandiacus",
+    "Song Thrush": "Turdus philomelos",
+    "Tawny Owl": "Strix aluco",
+    "Thrush Nightingale": "Luscinia luscinia",
+    "Water Rail": "Rallus aquaticus",
+    "White Stork": "Ciconia ciconia",
+    "White Wagtail": "Motacilla alba",
+    "White-Backed Woodpecker": "Dendrocopos leucotos",
+    "Willow Tit": "Poecile montanus",
+    "Wood Warbler": "Phylloscopus sibilatrix",
+    "Eurasian Wren": "Troglodytes troglodytes",
+    "Yellowhammer": "Emberiza citrinella",
+
+    // --- Oceania expansion ---
+    "Australasian Pipit": "Anthus novaeseelandiae",
+    "Australasian Shoveler": "Spatula rhynchotis",
+    "Australian Ibis": "Threskiornis molucca",
+    "Australian Magpie": "Gymnorhina tibicen",
+    "Australian Owlet-Nightjar": "Aegotheles cristatus",
+    "Australian Raven": "Corvus coronoides",
+    "Australian Reed Warbler": "Acrocephalus australis",
+    "Australian Shelduck": "Tadorna tadornoides",
+    "Australian Zebra Finch": "Taeniopygia castanotis",
+    "Black Noddy": "Anous minutus",
+    "Black Swan": "Cygnus atratus",
+    "Black-Shouldered Kite": "Elanus axillaris",
+    "Blue-Billed Duck": "Oxyura australis",
+    "Brolga": "Antigone rubicunda",
+    "Budgerigar": "Melopsittacus undulatus",
+    "Cockatiel": "Nymphicus hollandicus",
+    "Common Myna": "Acridotheres tristis",
+    "Crested Pigeon": "Ocyphaps lophotes",
+    "Crimson Chat": "Epthianura tricolor",
+    "Eastern Rosella": "Platycercus eximius",
+    "Eastern Whipbird": "Psophodes olivaceus",
+    "Emu": "Dromaius novaehollandiae",
+    "Galah": "Eolophus roseicapilla",
+    "Gouldian Finch": "Chloebia gouldiae",
+    "Grey Butcherbird": "Cracticus torquatus",
+    "Grey Shrikethrush": "Colluricincla harmonica",
+    "Grey Teal": "Anas gracilis",
+    "Grey Warbler": "Gerygone igata",
+    "Kakapo": "Strigops habroptilus",
+    "Kea": "Nestor notabilis",
+    "Kelp Gull": "Larus dominicanus",
+    "Korimako": "Anthornis melanura",
+    "Laughing Kookaburra": "Dacelo novaeguineae",
+    "Little Penguin": "Eudyptula minor",
+    "Little Pied Cormorant": "Microcarbo melanoleucos",
+    "Magpie-Lark": "Grallina cyanoleuca",
+    "Major Mitchell's Cockatoo": "Lophochroa leadbeateri",
+    "Maned Duck": "Chenonetta jubata",
+    "Masked Lapwing": "Vanellus miles",
+    "Mistletoebird": "Dicaeum hirundinaceum",
+    "Morepork": "Ninox novaeseelandiae",
+    "New Holland Honeyeater": "Phylidonyris novaehollandiae",
+    "Noisy Miner": "Manorina melanocephala",
+    "North Island Brown Kiwi": "Apteryx mantelli",
+    "Orange-Footed Scrubfowl": "Megapodius reinwardt",
+    "Pacific Black Duck": "Anas superciliosa",
+    "Peaceful Dove": "Geopelia placida",
+    "Pesquet's Parrot": "Psittrichas fulgidus",
+    "Pied Currawong": "Strepera graculina",
+    "Plains-Wanderer": "Pedionomus torquatus",
+    "Pukeko": "Porphyrio melanotus",
+    "Rainbow Lorikeet": "Trichoglossus moluccanus",
+    "Red Wattlebird": "Anthochaera carunculata",
+    "Red-Capped Robin": "Petroica goodenovii",
+    "Red-Winged Parrot": "Aprosmictus erythropterus",
+    "Regent Bowerbird": "Sericulus chrysocephalus",
+    "Rose-Crowned Fruit-Dove": "Ptilinopus regina",
+    "Royal Spoonbill": "Platalea regia",
+    "Silvereye": "Zosterops lateralis",
+    "South Island Robin": "Petroica australis",
+    "Splendid Fairywren": "Malurus splendens",
+    "Spotted Dove": "Spilopelia chinensis",
+    "Stubble Quail": "Coturnix pectoralis",
+    "Sulphur-Crested Cockatoo": "Cacatua galerita",
+    "Superb Fairywren": "Malurus cyaneus",
+    "Superb Lyrebird": "Menura novaehollandiae",
+    "Tawny Frogmouth": "Podargus strigoides",
+    "Tui": "Prosthemadera novaeseelandiae",
+    "Wedge-Tailed Eagle": "Aquila audax",
+    "Welcome Swallow": "Hirundo neoxena",
+    "White-Breasted Woodswallow": "Artamus leucorynchus",
+    "White-Faced Heron": "Egretta novaehollandiae",
+    "Willie Wagtail": "Rhipidura leucophrys",
+
+    // Common aliases (different printings / shorthand names)
+    "Kookaburra": "Dacelo novaeguineae",
+    "Kiwi": "Apteryx mantelli",
+    "Bellbird": "Anthornis melanura",
     "Common Starling": "Sturnus vulgaris",
     "Eurasian Blackbird": "Turdus merula",
-    "Song Thrush": "Turdus philomelos",
-    "Eurasian Wren": "Troglodytes troglodytes",
-    "Goldcrest": "Regulus regulus",
-    "White Stork": "Ciconia ciconia",
-    "Grey Heron": "Ardea cinerea",
-    "Common Swift": "Apus apus",
-    "Tawny Owl": "Strix aluco",
-    "Common Cuckoo": "Cuculus canorus",
-    "European Bee-Eater": "Merops apiaster",
-    "Hoopoe": "Upupa epops",
-    "Great Spotted Woodpecker": "Dendrocopos major",
-    "Common Nightingale": "Luscinia megarhynchos",
-    "Mute Swan": "Cygnus olor",
-    "Emu": "Dromaius novaehollandiae",
-    "Kookaburra": "Dacelo novaeguineae",
-    "Superb Fairywren": "Malurus cyaneus",
-    "Galah": "Eolophus roseicapilla",
-    "Sulphur-Crested Cockatoo": "Cacatua galerita",
-    "Rainbow Lorikeet": "Trichoglossus moluccanus",
-    "Kiwi": "Apteryx mantelli",
-    "Tui": "Prosthemadera novaeseelandiae",
-    "Bellbird": "Anthornis melanura",
-    "Kakapo": "Strigops habroptilus"
+    "Hoopoe": "Upupa epops"
 };
 
-const WINGSPAN_BIRDS = Object.keys(BIRD_DB);
+const WINGSPAN_BIRDS = Object.keys(BIRD_DB).sort();
 const SCIENTIFIC_TO_COMMON = {};
 for (const [common, sci] of Object.entries(BIRD_DB)) {
-    SCIENTIFIC_TO_COMMON[sci.toLowerCase()] = common;
+    if (!SCIENTIFIC_TO_COMMON[sci.toLowerCase()]) {
+        SCIENTIFIC_TO_COMMON[sci.toLowerCase()] = common;
+    }
 }
 const audioCache = {};
+const factCache = {};
 
-// ---- Camera (auto-start) ----
+// ---- Camera ----
 
 async function startCamera() {
     try {
@@ -257,9 +465,7 @@ async function startCamera() {
         camera.srcObject = stream;
     } catch (err) {
         console.error('Camera error:', err);
-        // Show helpful message - user can still use upload or search
-        showSheet();
-        showError('Camera not available. Use "Upload Photo" or search by name instead.');
+        showError('CAMERA OFFLINE. Use UPLOAD PHOTO or search the database above.');
     }
 }
 
@@ -272,7 +478,7 @@ function captureFrame() {
     return canvas.toDataURL('image/jpeg', 0.92);
 }
 
-// ---- Improved OCR ----
+// ---- OCR ----
 
 async function getWorker() {
     if (!tesseractWorker) {
@@ -299,15 +505,12 @@ function preprocessImage(img, crop, threshold, invert) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Sharpen: draw slightly blurred then overlay sharp (unsharp mask effect)
     ctx.filter = 'contrast(2.0) brightness(1.2) grayscale(1)';
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
 
-    // Apply sharpening convolution
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const sharpened = sharpenImageData(imageData);
 
-    // Threshold to B&W
     const d = sharpened.data;
     for (let i = 0; i < d.length; i += 4) {
         const avg = (d[i] + d[i + 1] + d[i + 2]) / 3;
@@ -349,7 +552,7 @@ function sharpenImageData(imageData) {
 }
 
 async function recognizeBirdName(imageDataUrl) {
-    loadingText.textContent = 'Reading card text...';
+    loadingText.textContent = 'READING CARD...';
 
     const img = new Image();
     await new Promise((resolve) => { img.onload = resolve; img.src = imageDataUrl; });
@@ -357,16 +560,16 @@ async function recognizeBirdName(imageDataUrl) {
     const worker = await getWorker();
     let allOcrText = '';
 
-    // Pass 1: Try each crop region with default threshold (fast — 4 OCR calls max)
+    // Pass 1: each crop region with default threshold (4 OCR calls max)
     const crops = [
-        { name: 'top-right name', top: 0, bottom: 0.15, left: 0.3, right: 1.0 },
-        { name: 'top banner', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
-        { name: 'upper third', top: 0, bottom: 0.35, left: 0.0, right: 1.0 },
-        { name: 'full card', top: 0, bottom: 1.0, left: 0.0, right: 1.0 },
+        { name: 'NAME BANNER', top: 0, bottom: 0.15, left: 0.3, right: 1.0 },
+        { name: 'TOP BANNER', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
+        { name: 'UPPER THIRD', top: 0, bottom: 0.35, left: 0.0, right: 1.0 },
+        { name: 'FULL CARD', top: 0, bottom: 1.0, left: 0.0, right: 1.0 },
     ];
 
     for (const crop of crops) {
-        loadingText.textContent = `Scanning ${crop.name}...`;
+        loadingText.textContent = `SCANNING ${crop.name}...`;
         const processed = preprocessImage(img, crop, 140, false);
         const { data } = await worker.recognize(processed);
         const text = data.text.trim();
@@ -378,12 +581,11 @@ async function recognizeBirdName(imageDataUrl) {
         }
     }
 
-    // Check scientific names from pass 1
     const sciMatch = findScientificName(allOcrText);
     if (sciMatch) return sciMatch;
 
-    // Pass 2: Only if pass 1 failed — try alternate thresholds + inverted on top area (4 more calls max)
-    loadingText.textContent = 'Trying enhanced scan...';
+    // Pass 2: alternate thresholds + inverted on top banner (4 more max)
+    loadingText.textContent = 'ENHANCED SCAN...';
     const retryCrop = { name: 'top banner', top: 0, bottom: 0.22, left: 0.0, right: 1.0 };
     const retryConfigs = [
         { threshold: 100, invert: false },
@@ -404,16 +606,27 @@ async function recognizeBirdName(imageDataUrl) {
         }
     }
 
-    // Final check for scientific names across all text
     return findScientificName(allOcrText);
 }
 
+// ---- Matching ----
+
 function findScientificName(text) {
     if (!text) return null;
-    const normalized = text.toLowerCase().replace(/[^a-z\s]/g, ' ');
+    const normalized = text.toLowerCase().replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ');
+    // Prefer the full "genus species" phrase appearing together
+    for (const [sci, common] of Object.entries(SCIENTIFIC_TO_COMMON)) {
+        if (normalized.includes(sci)) return common;
+    }
+    // Fallback: both words present (handles line breaks between genus/species).
+    // When genus === species (e.g. Tyrannus tyrannus) the word must appear twice,
+    // otherwise any congener would false-match.
     for (const [sci, common] of Object.entries(SCIENTIFIC_TO_COMMON)) {
         const parts = sci.split(' ');
-        if (parts.length >= 2 && normalized.includes(parts[0]) && normalized.includes(parts[1])) {
+        if (parts.length < 2) continue;
+        if (parts[0] === parts[1]) {
+            if (normalized.split(parts[0]).length - 1 >= 2) return common;
+        } else if (normalized.includes(parts[0]) && normalized.includes(parts[1])) {
             return common;
         }
     }
@@ -433,19 +646,22 @@ function findBirdInText(text) {
 
     let bestMatch = null;
     let bestScore = 0;
+    let bestWords = 0;
+    // On a tie, prefer the name with more words: a fully-matched
+    // "Yellow-Rumped Warbler" should beat a fully-matched "Yellow Warbler".
+    const isBetter = (score, n) => score > bestScore || (score === bestScore && n > bestWords);
 
     for (const bird of WINGSPAN_BIRDS) {
         const birdWords = bird.toLowerCase().replace(/['-]/g, ' ').split(/\s+/).filter(w => w.length > 1);
         for (const line of lines) {
             const lineLower = line.toLowerCase().replace(/[^a-z\s]/g, ' ');
             const score = fuzzyScore(birdWords, lineLower);
-            if (score > bestScore) { bestScore = score; bestMatch = bird; }
+            if (isBetter(score, birdWords.length)) { bestScore = score; bestMatch = bird; bestWords = birdWords.length; }
         }
         const wholeScore = fuzzyScore(birdWords, normalized);
-        if (wholeScore > bestScore) { bestScore = wholeScore; bestMatch = bird; }
+        if (isBetter(wholeScore, birdWords.length)) { bestScore = wholeScore; bestMatch = bird; bestWords = birdWords.length; }
     }
 
-    // Lowered threshold from 0.7 to 0.55 for blurry photos
     if (bestScore >= 0.55) return bestMatch;
     return null;
 }
@@ -483,6 +699,118 @@ function editDistance(a, b) {
     return matrix[b.length][a.length];
 }
 
+// ---- Dex Facts (Wikipedia summary: CORS-enabled, has extract + photo) ----
+
+async function fetchBirdFact(birdName, scientificName) {
+    if (factCache[birdName]) return factCache[birdName];
+    const titles = [birdName, scientificName].filter(Boolean);
+    for (const title of titles) {
+        try {
+            const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+            const resp = await fetch(url);
+            if (!resp.ok) continue;
+            const data = await resp.json();
+            if (data.type === 'disambiguation' || !data.extract) continue;
+            const result = {
+                fact: data.extract,
+                image: (data.thumbnail && data.thumbnail.source) || null
+            };
+            factCache[birdName] = result;
+            return result;
+        } catch (err) {
+            console.error('Fact fetch failed:', err);
+        }
+    }
+    return null;
+}
+
+// Trim an extract to whole sentences within maxLen chars
+function trimToSentences(text, maxLen) {
+    const clean = text.replace(/\s+/g, ' ').trim();
+    if (clean.length <= maxLen) return clean;
+    const slice = clean.slice(0, maxLen);
+    const lastStop = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('.'));
+    return lastStop > 60 ? slice.slice(0, lastStop + 1) : slice + '...';
+}
+
+// ---- Robotic Dex Voice ----
+
+function speechAvailable() {
+    return typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
+}
+
+function pickVoice() {
+    const voices = speechSynthesis.getVoices();
+    return voices.find(v => /en[-_]/i.test(v.lang) && /google/i.test(v.name))
+        || voices.find(v => /^en/i.test(v.lang))
+        || null;
+}
+
+// iOS/Safari requires speech to be primed by a user gesture
+function unlockSpeech() {
+    if (speechUnlocked || !speechAvailable()) return;
+    try {
+        const u = new SpeechSynthesisUtterance('');
+        u.volume = 0;
+        speechSynthesis.speak(u);
+        speechUnlocked = true;
+    } catch (e) { /* ignore */ }
+}
+
+function speak(text, onDone) {
+    if (!speechAvailable()) { if (onDone) onDone(); return; }
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.pitch = 0.45;   // low pitch = robotic dex voice
+    u.rate = 0.95;
+    const voice = pickVoice();
+    if (voice) u.voice = voice;
+    let finished = false;
+    const done = () => {
+        if (finished) return;
+        finished = true;
+        ledVoice.classList.remove('on');
+        speakBtn.classList.remove('active');
+        if (onDone) onDone();
+    };
+    u.onend = done;
+    u.onerror = done;
+    ledVoice.classList.add('on');
+    speakBtn.classList.add('active');
+    speechSynthesis.speak(u);
+    // Safety: some browsers never fire onend; cap at ~40s
+    setTimeout(done, 40000);
+}
+
+function stopSpeech() {
+    if (speechAvailable()) speechSynthesis.cancel();
+    ledVoice.classList.remove('on');
+    speakBtn.classList.remove('active');
+}
+
+// Preload voices (Chrome populates them asynchronously)
+if (speechAvailable()) {
+    speechSynthesis.getVoices();
+    speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+}
+
+// ---- Typewriter effect ----
+
+function typewriter(el, text, speed) {
+    clearInterval(typewriterTimer);
+    el.classList.remove('done');
+    el.textContent = '';
+    let i = 0;
+    typewriterTimer = setInterval(() => {
+        i += 2; // two chars per tick keeps long entries snappy
+        el.textContent = text.slice(0, i);
+        if (i >= text.length) {
+            clearInterval(typewriterTimer);
+            el.classList.add('done');
+        }
+    }, speed || 18);
+}
+
 // ---- Sound Fetching ----
 
 function withTimeout(promise, ms) {
@@ -493,7 +821,6 @@ function withTimeout(promise, ms) {
 }
 
 async function fetchBirdSound(birdName) {
-    if (sheetLoadingText) sheetLoadingText.textContent = 'Finding bird sounds...';
     if (audioCache[birdName]) return audioCache[birdName];
     const scientificName = BIRD_DB[birdName] || '';
 
@@ -503,7 +830,6 @@ async function fetchBirdSound(birdName) {
     } catch (err) { console.log('Wikimedia timed out, trying xeno-canto...'); }
 
     try {
-        if (sheetLoadingText) sheetLoadingText.textContent = 'Checking xeno-canto...';
         const xcResult = await withTimeout(fetchFromXenoCanto(birdName, scientificName), 8000);
         if (xcResult) { audioCache[birdName] = xcResult; return xcResult; }
     } catch (err) { console.log('Xeno-canto timed out'); }
@@ -512,7 +838,6 @@ async function fetchBirdSound(birdName) {
 }
 
 async function fetchFromWikimedia(birdName, scientificName) {
-    // Try multiple search variations to maximize hits
     const searchTerms = [
         scientificName ? scientificName + ' bird sound' : null,
         scientificName ? scientificName + ' call' : null,
@@ -520,7 +845,6 @@ async function fetchFromWikimedia(birdName, scientificName) {
         birdName + ' call',
         scientificName || null,
     ].filter(Boolean);
-    // Deduplicate
     const searches = [...new Set(searchTerms)];
     for (const term of searches) {
         try {
@@ -605,43 +929,47 @@ async function fetchFromXenoCanto(birdName, scientificName) {
 
 // ---- Audio Playback ----
 
-function setupAudioPlayer(soundData) {
+function setupAudioPlayer(soundData, autoplay) {
     hide(audioPlayer);
     hide(xcEmbedPlayer);
+    hide(noSound);
 
     if (soundData.type === 'wikimedia') {
         birdAudio.src = soundData.url;
         recordingInfo.textContent = soundData.description || `Source: ${soundData.source}`;
         show(audioPlayer);
-        hide(noSound);
-        playAudio();
+        if (autoplay) playAudio();
     } else if (soundData.type === 'xeno-canto') {
         birdAudio.src = soundData.url;
-        recordingInfo.textContent = `Recorded by ${soundData.recordist} in ${soundData.country} (${soundData.recordingType})`;
+        recordingInfo.textContent = `Rec: ${soundData.recordist} (${soundData.country})`;
         show(audioPlayer);
-        hide(noSound);
-        birdAudio.play().then(() => {
-            playIcon.textContent = '\u23F8';
-            isPlaying = true;
-        }).catch(() => {
-            hide(audioPlayer);
-            xcIframe.src = `https://xeno-canto.org/${soundData.id}/embed?simple=1`;
-            xcEmbedInfo.textContent = `Recorded by ${soundData.recordist} in ${soundData.country}`;
-            show(xcEmbedPlayer);
-        });
-        return;
+        if (autoplay) {
+            birdAudio.play().then(() => {
+                playIcon.textContent = '⏸';
+                isPlaying = true;
+                ledSound.classList.add('on');
+            }).catch(() => {
+                // CORS-blocked direct playback: fall back to xeno-canto embed
+                hide(audioPlayer);
+                xcIframe.src = `https://xeno-canto.org/${soundData.id}/embed?simple=1`;
+                xcEmbedInfo.textContent = `Rec: ${soundData.recordist} (${soundData.country})`;
+                show(xcEmbedPlayer);
+            });
+        }
     }
 }
 
 function playAudio() {
     if (isPlaying) {
         birdAudio.pause();
-        playIcon.textContent = '\u25B6';
+        playIcon.textContent = '▶';
         isPlaying = false;
+        ledSound.classList.remove('on');
     } else {
         birdAudio.play().catch(err => console.error('Audio error:', err));
-        playIcon.textContent = '\u23F8';
+        playIcon.textContent = '⏸';
         isPlaying = true;
+        ledSound.classList.add('on');
     }
 }
 
@@ -652,29 +980,15 @@ birdAudio.addEventListener('timeupdate', () => {
 });
 
 birdAudio.addEventListener('ended', () => {
-    playIcon.textContent = '\u25B6';
+    playIcon.textContent = '▶';
     isPlaying = false;
+    ledSound.classList.remove('on');
     audioProgressBar.style.width = '0%';
 });
 
-// ---- UI: Bottom Sheet ----
-
-function showSheet() {
-    requestAnimationFrame(() => resultSheet.classList.add('open'));
-}
-
-function hideSheet() {
-    resultSheet.classList.remove('open');
-    setTimeout(() => {
-        hide(birdResult);
-        hide(errorMessage);
-        hide(sheetLoading);
-        hide(audioPlayer);
-        hide(xcEmbedPlayer);
-        hide(noSound);
-    }, 350);
-    resetAudioState();
-}
+birdAudio.addEventListener('pause', () => {
+    ledSound.classList.remove('on');
+});
 
 function resetAudioState() {
     isPlaying = false;
@@ -682,6 +996,142 @@ function resetAudioState() {
     birdAudio.removeAttribute('src');
     xcIframe.removeAttribute('src');
     audioProgressBar.style.width = '0%';
+    playIcon.textContent = '▶';
+    ledSound.classList.remove('on');
+    hide(audioPlayer);
+    hide(xcEmbedPlayer);
+    hide(noSound);
+}
+
+// ---- View Switching ----
+
+function showCameraMode() {
+    stopSpeech();
+    resetAudioState();
+    clearInterval(typewriterTimer);
+    hide(entryView);
+    show(cameraView);
+    hide(backBtn);
+    hide(speakBtn);
+    hide(errorMessage);
+    currentBird = null;
+}
+
+function showEntryMode() {
+    hide(cameraView);
+    show(entryView);
+    show(backBtn);
+    show(speakBtn);
+}
+
+function showError(message) {
+    showEntryMode();
+    entryNumber.textContent = 'ERROR';
+    entryName.textContent = '';
+    entrySci.textContent = '';
+    entryFact.textContent = '';
+    entryFact.classList.add('done');
+    entryStatus.textContent = '';
+    hide(entryPhoto);
+    show(entryPhotoPlaceholder);
+    errorText.textContent = message;
+    show(errorMessage);
+    hide(speakBtn);
+}
+
+// ---- Dex Entry: the heart of the Pokedex flow ----
+
+let lastSpokenText = '';
+
+async function showDexEntry(bird) {
+    stopSpeech();
+    resetAudioState();
+    currentBird = bird;
+    const sci = BIRD_DB[bird] || '';
+    const dexNo = WINGSPAN_BIRDS.indexOf(bird) + 1;
+
+    // Set up the entry screen
+    hide(errorMessage);
+    entryNumber.textContent = 'No.' + String(dexNo).padStart(3, '0');
+    entryName.textContent = bird.toUpperCase();
+    entrySci.textContent = sci;
+    entryFact.textContent = '';
+    entryFact.classList.remove('done');
+    entryStatus.textContent = 'ACCESSING DATABASE...';
+    hide(entryPhoto);
+    show(entryPhotoPlaceholder);
+    showEntryMode();
+
+    // Fetch fact and sound in parallel
+    const factPromise = withTimeout(fetchBirdFact(bird, sci), 8000).catch(() => null);
+    const soundPromise = fetchBirdSound(bird).catch(() => null);
+
+    const factData = await factPromise;
+    if (currentBird !== bird) return; // user navigated away
+
+    // Photo
+    if (factData && factData.image) {
+        entryPhoto.src = factData.image;
+        entryPhoto.onload = () => {
+            if (currentBird !== bird) return;
+            show(entryPhoto);
+            hide(entryPhotoPlaceholder);
+        };
+    }
+
+    // Fact text: typewriter on screen + robotic voice reading it
+    const displayFact = factData
+        ? trimToSentences(factData.fact, 420)
+        : `${bird}. Scientific name: ${sci}. A bird from the Wingspan deck. No further data available.`;
+    const speechFact = factData
+        ? trimToSentences(factData.fact.replace(/\([^)]*\)/g, ''), 360)
+        : displayFact;
+
+    typewriter(entryFact, displayFact);
+    entryStatus.textContent = 'READING ENTRY...';
+
+    lastSpokenText = `${bird}. ${speechFact}`;
+    speak(lastSpokenText, async () => {
+        if (currentBird !== bird) return;
+        // Voice done -> play the bird call
+        entryStatus.textContent = 'PLAYING CALL...';
+        const soundData = await soundPromise;
+        if (currentBird !== bird) return;
+        if (soundData) {
+            setupAudioPlayer(soundData, true);
+            entryStatus.textContent = '';
+        } else {
+            show(noSound);
+            entryStatus.textContent = '';
+        }
+    });
+}
+
+// ---- Scan Flow ----
+
+async function processImage(imageDataUrl) {
+    show(scanLoading);
+    scanBtn.classList.add('scanning');
+    ledScan.classList.add('on');
+
+    try {
+        const bird = await recognizeBirdName(imageDataUrl);
+        hide(scanLoading);
+        scanBtn.classList.remove('scanning');
+        ledScan.classList.remove('on');
+
+        if (!bird) {
+            showError('NO MATCH FOUND. Try a closer, clearer photo of the card, or search the database above.');
+            return;
+        }
+        showDexEntry(bird);
+    } catch (err) {
+        console.error('Processing error:', err);
+        hide(scanLoading);
+        scanBtn.classList.remove('scanning');
+        ledScan.classList.remove('on');
+        showError('SCAN FAILURE. Try again or search the database above.');
+    }
 }
 
 // ---- Manual Search ----
@@ -710,7 +1160,9 @@ function setupSearch() {
                 const bird = item.getAttribute('data-bird');
                 hide(searchResults);
                 searchInput.value = '';
-                playBirdByName(bird);
+                searchInput.blur();
+                unlockSpeech();
+                showDexEntry(bird);
             });
         });
     });
@@ -720,107 +1172,30 @@ function setupSearch() {
     });
 }
 
-async function playBirdByName(bird) {
-    hide(birdResult);
-    hide(errorMessage);
-    hide(audioPlayer);
-    hide(xcEmbedPlayer);
-    hide(noSound);
-
-    // Show loading inside the sheet (not on camera)
-    sheetLoadingText.textContent = 'Finding bird sounds...';
-    show(sheetLoading);
-    showSheet();
-
-    birdNameEl.textContent = bird;
-    birdScientific.textContent = BIRD_DB[bird] || '';
-
-    const soundData = await fetchBirdSound(bird);
-    hide(sheetLoading);
-    show(birdResult);
-
-    if (soundData) {
-        birdScientific.textContent = soundData.scientificName || BIRD_DB[bird] || '';
-        setupAudioPlayer(soundData);
-    } else {
-        hide(audioPlayer);
-        show(noSound);
-    }
-}
-
-// ---- Main Flow ----
-
-async function processImage(imageDataUrl) {
-    hide(birdResult);
-    hide(errorMessage);
-    hide(audioPlayer);
-    hide(xcEmbedPlayer);
-    hide(noSound);
-    hide(sheetLoading);
-    show(scanLoading);
-    scanBtn.classList.add('scanning');
-
-    try {
-        const bird = await recognizeBirdName(imageDataUrl);
-        if (!bird) {
-            hide(scanLoading);
-            scanBtn.classList.remove('scanning');
-            showSheet();
-            showError('Could not read the bird name. Try a closer/clearer photo, or search manually above.');
-            return;
-        }
-
-        // OCR done — hide camera overlay, show sheet with in-sheet loading
-        hide(scanLoading);
-        scanBtn.classList.remove('scanning');
-        birdNameEl.textContent = bird;
-        birdScientific.textContent = BIRD_DB[bird] || '';
-        sheetLoadingText.textContent = `Found ${bird}! Loading sounds...`;
-        show(sheetLoading);
-        showSheet();
-
-        const soundData = await fetchBirdSound(bird);
-        hide(sheetLoading);
-        show(birdResult);
-
-        if (soundData) {
-            birdScientific.textContent = soundData.scientificName || BIRD_DB[bird] || '';
-            setupAudioPlayer(soundData);
-        } else {
-            birdScientific.textContent = BIRD_DB[bird] || '';
-            hide(audioPlayer);
-            show(noSound);
-        }
-    } catch (err) {
-        console.error('Processing error:', err);
-        hide(scanLoading);
-        hide(sheetLoading);
-        scanBtn.classList.remove('scanning');
-        showSheet();
-        showError('Something went wrong. Try again or search manually.');
-    }
-}
-
-function showError(message) {
-    errorText.textContent = message;
-    show(errorMessage);
-}
-
 // ---- Event Listeners ----
 
 scanBtn.addEventListener('click', () => {
-    if (scanBtn.classList.contains('scanning')) return; // prevent double-tap
+    if (scanBtn.classList.contains('scanning')) return;
+    unlockSpeech();
+    // If viewing an entry, SCAN returns to camera first
+    if (!entryView.classList.contains('hidden')) {
+        showCameraMode();
+        return;
+    }
     if (!stream) { startCamera(); return; }
-    hideSheet(); // close any open result before new scan
     const imageData = captureFrame();
     processImage(imageData);
 });
 
-uploadBtn.addEventListener('click', () => fileInput.click());
+uploadBtn.addEventListener('click', () => {
+    unlockSpeech();
+    fileInput.click();
+});
 
 fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    showCameraMode();
     const reader = new FileReader();
     reader.onload = (ev) => processImage(ev.target.result);
     reader.readAsDataURL(file);
@@ -828,11 +1203,12 @@ fileInput.addEventListener('change', (e) => {
 });
 
 playBtn.addEventListener('click', playAudio);
-dismissBtn.addEventListener('click', hideSheet);
+backBtn.addEventListener('click', showCameraMode);
 
-wrongBirdBtn.addEventListener('click', () => {
-    hideSheet();
-    searchInput.focus();
+speakBtn.addEventListener('click', () => {
+    if (!lastSpokenText) return;
+    stopSpeech();
+    speak(lastSpokenText, null);
 });
 
 // ---- Init ----
