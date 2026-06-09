@@ -560,11 +560,13 @@ async function recognizeBirdName(imageDataUrl) {
     const worker = await getWorker();
     let allOcrText = '';
 
-    // Pass 1: each crop region with default threshold (4 OCR calls max)
+    // Pass 1: multiple crop regions covering common card layouts
     const crops = [
-        { name: 'NAME BANNER', top: 0, bottom: 0.15, left: 0.3, right: 1.0 },
+        { name: 'NAME BANNER', top: 0, bottom: 0.15, left: 0.25, right: 1.0 },
         { name: 'TOP BANNER', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
+        { name: 'LEFT NAME', top: 0, bottom: 0.18, left: 0.0, right: 0.7 },
         { name: 'UPPER THIRD', top: 0, bottom: 0.35, left: 0.0, right: 1.0 },
+        { name: 'CENTER BAND', top: 0.25, bottom: 0.55, left: 0.0, right: 1.0 },
         { name: 'FULL CARD', top: 0, bottom: 1.0, left: 0.0, right: 1.0 },
     ];
 
@@ -581,28 +583,35 @@ async function recognizeBirdName(imageDataUrl) {
         }
     }
 
-    const sciMatch = findScientificName(allOcrText);
+    let sciMatch = findScientificName(allOcrText);
     if (sciMatch) return sciMatch;
 
-    // Pass 2: alternate thresholds + inverted on top banner (4 more max)
+    // Pass 2: varied thresholds + inverted on multiple regions
     loadingText.textContent = 'ENHANCED SCAN...';
-    const retryCrop = { name: 'top banner', top: 0, bottom: 0.22, left: 0.0, right: 1.0 };
+    const retryCrops = [
+        { name: 'top banner', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
+        { name: 'name banner', top: 0, bottom: 0.15, left: 0.25, right: 1.0 },
+    ];
     const retryConfigs = [
         { threshold: 100, invert: false },
         { threshold: 180, invert: false },
         { threshold: 140, invert: true },
         { threshold: 100, invert: true },
+        { threshold: 200, invert: false },
+        { threshold: 60,  invert: false },
     ];
 
-    for (const cfg of retryConfigs) {
-        const processed = preprocessImage(img, retryCrop, cfg.threshold, cfg.invert);
-        const { data } = await worker.recognize(processed);
-        const text = data.text.trim();
-        if (text.length > 2) {
-            console.log(`OCR [retry t=${cfg.threshold} inv=${cfg.invert}]:`, text);
-            allOcrText += ' ' + text;
-            const match = findBirdInText(allOcrText);
-            if (match) { console.log(`Match: ${match}`); return match; }
+    for (const crop of retryCrops) {
+        for (const cfg of retryConfigs) {
+            const processed = preprocessImage(img, crop, cfg.threshold, cfg.invert);
+            const { data } = await worker.recognize(processed);
+            const text = data.text.trim();
+            if (text.length > 2) {
+                console.log(`OCR [retry ${crop.name} t=${cfg.threshold} inv=${cfg.invert}]:`, text);
+                allOcrText += ' ' + text;
+                const match = findBirdInText(allOcrText);
+                if (match) { console.log(`Match: ${match}`); return match; }
+            }
         }
     }
 
@@ -637,24 +646,24 @@ function findBirdInText(text) {
     if (!text) return null;
 
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2);
-    const normalized = text.toLowerCase().replace(/[^a-z\s'-]/g, ' ').replace(/\s+/g, ' ');
+    // Normalize: treat hyphens as spaces (OCR often drops them), strip other junk
+    const normalized = text.toLowerCase().replace(/[-'']/g, ' ').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ');
 
     const sortedBirds = [...WINGSPAN_BIRDS].sort((a, b) => b.length - a.length);
     for (const bird of sortedBirds) {
-        if (normalized.includes(bird.toLowerCase())) return bird;
+        const birdNorm = bird.toLowerCase().replace(/[-'']/g, ' ');
+        if (normalized.includes(birdNorm)) return bird;
     }
 
     let bestMatch = null;
     let bestScore = 0;
     let bestWords = 0;
-    // On a tie, prefer the name with more words: a fully-matched
-    // "Yellow-Rumped Warbler" should beat a fully-matched "Yellow Warbler".
     const isBetter = (score, n) => score > bestScore || (score === bestScore && n > bestWords);
 
     for (const bird of WINGSPAN_BIRDS) {
         const birdWords = bird.toLowerCase().replace(/['-]/g, ' ').split(/\s+/).filter(w => w.length > 1);
         for (const line of lines) {
-            const lineLower = line.toLowerCase().replace(/[^a-z\s]/g, ' ');
+            const lineLower = line.toLowerCase().replace(/[-'']/g, ' ').replace(/[^a-z\s]/g, ' ');
             const score = fuzzyScore(birdWords, lineLower);
             if (isBetter(score, birdWords.length)) { bestScore = score; bestMatch = bird; bestWords = birdWords.length; }
         }
@@ -929,33 +938,61 @@ async function fetchFromXenoCanto(birdName, scientificName) {
 
 // ---- Audio Playback ----
 
+function cleanDescription(raw) {
+    if (!raw) return '';
+    return raw
+        .replace(/<[^>]*>/g, '')
+        .replace(/&[a-z]+;/gi, ' ')
+        .replace(/\{[^}]*\}/g, '')
+        .replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, '$2')
+        .replace(/https?:\/\/\S+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function formatRecordingInfo(soundData) {
+    if (soundData.type === 'wikimedia') {
+        const desc = cleanDescription(soundData.description);
+        if (desc && desc.length > 5 && desc.length < 120) return desc;
+        return 'Bird call · Wikimedia Commons';
+    }
+    if (soundData.type === 'xeno-canto') {
+        let info = '';
+        if (soundData.recordist) info += `Rec: ${soundData.recordist}`;
+        if (soundData.country) info += info ? ` · ${soundData.country}` : soundData.country;
+        const type = (soundData.recordingType || '').toLowerCase();
+        if (type.includes('song')) info += ' · Song';
+        else if (type.includes('call')) info += ' · Call';
+        return info || 'Bird call · xeno-canto';
+    }
+    return 'Bird call';
+}
+
 function setupAudioPlayer(soundData, autoplay) {
     hide(audioPlayer);
     hide(xcEmbedPlayer);
     hide(noSound);
+    isPlaying = false;
+    playIcon.textContent = '▶';
+    ledSound.classList.remove('on');
 
-    if (soundData.type === 'wikimedia') {
-        birdAudio.src = soundData.url;
-        recordingInfo.textContent = soundData.description || `Source: ${soundData.source}`;
-        show(audioPlayer);
-        if (autoplay) playAudio();
-    } else if (soundData.type === 'xeno-canto') {
-        birdAudio.src = soundData.url;
-        recordingInfo.textContent = `Rec: ${soundData.recordist} (${soundData.country})`;
-        show(audioPlayer);
-        if (autoplay) {
-            birdAudio.play().then(() => {
-                playIcon.textContent = '⏸';
-                isPlaying = true;
-                ledSound.classList.add('on');
-            }).catch(() => {
-                // CORS-blocked direct playback: fall back to xeno-canto embed
+    birdAudio.src = soundData.url;
+    recordingInfo.textContent = formatRecordingInfo(soundData);
+    show(audioPlayer);
+
+    if (autoplay) {
+        birdAudio.play().then(() => {
+            playIcon.textContent = '⏸';
+            isPlaying = true;
+            ledSound.classList.add('on');
+        }).catch(() => {
+            if (soundData.type === 'xeno-canto' && soundData.id) {
                 hide(audioPlayer);
                 xcIframe.src = `https://xeno-canto.org/${soundData.id}/embed?simple=1`;
-                xcEmbedInfo.textContent = `Rec: ${soundData.recordist} (${soundData.country})`;
+                xcEmbedInfo.textContent = formatRecordingInfo(soundData);
                 show(xcEmbedPlayer);
-            });
-        }
+            }
+        });
     }
 }
 
