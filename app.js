@@ -664,29 +664,35 @@ async function recognizeBirdName(imageDataUrl) {
     if (sciMatch) return sciMatch;
 
     // Pass 3: rotated orientations (cards photographed sideways)
+    // Use FRESH text per rotation so noise from wrong orientation doesn't cause false matches
     const rotCrops = [
         { name: 'TOP', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
         { name: 'NAME', top: 0, bottom: 0.15, left: 0.2, right: 1.0 },
         { name: 'UPPER', top: 0, bottom: 0.35, left: 0.0, right: 1.0 },
+        { name: 'FULL', top: 0, bottom: 1.0, left: 0.0, right: 1.0 },
     ];
+    const rotThresholds = [140, 100, 180];
     for (const deg of [90, -90, 180]) {
         loadingText.textContent = `ROTATING ${deg > 0 ? '+' : ''}${deg}°...`;
         const rotCanvas = rotateImage(img, deg);
         const rotImg = new Image();
         await new Promise(r => { rotImg.onload = r; rotImg.src = rotCanvas.toDataURL('image/jpeg', 0.92); });
 
+        let rotText = '';
         for (const crop of rotCrops) {
-            const processed = preprocessImage(rotImg, crop, 140, false);
-            const { data } = await worker.recognize(processed);
-            const text = data.text.trim();
-            if (text.length > 2) {
-                console.log(`OCR [rot${deg} ${crop.name}]:`, text);
-                allOcrText += ' ' + text;
-                const match = findBirdInText(allOcrText);
-                if (match) { console.log(`Match: ${match}`); return match; }
+            for (const thresh of rotThresholds) {
+                const processed = preprocessImage(rotImg, crop, thresh, false);
+                const { data } = await worker.recognize(processed);
+                const text = data.text.trim();
+                if (text.length > 2) {
+                    console.log(`OCR [rot${deg} ${crop.name} t=${thresh}]:`, text);
+                    rotText += ' ' + text;
+                    const match = findBirdInText(rotText);
+                    if (match) { console.log(`Match: ${match}`); return match; }
+                }
             }
         }
-        sciMatch = findScientificName(allOcrText);
+        sciMatch = findScientificName(rotText);
         if (sciMatch) return sciMatch;
     }
 
@@ -737,6 +743,8 @@ function findBirdInText(text) {
 
     for (const bird of WINGSPAN_BIRDS) {
         const birdWords = bird.toLowerCase().replace(/['-]/g, ' ').split(/\s+/).filter(w => w.length > 1);
+        // Single-word names (Tui, Emu, Kea, Brant, etc.) only match on exact substring above
+        if (birdWords.length <= 1) continue;
         for (const line of lines) {
             const lineLower = line.toLowerCase().replace(/[-'']/g, ' ').replace(/[^a-z\s]/g, ' ');
             const score = fuzzyScore(birdWords, lineLower);
@@ -757,6 +765,8 @@ function fuzzyScore(birdWords, text) {
     for (const word of birdWords) {
         if (word.length <= 1) continue;
         if (text.includes(word)) { matched++; continue; }
+        // Very short words (≤3 chars like "red", "tit", "jay") require exact substring
+        if (word.length <= 3) continue;
         let bestDist = Infinity;
         for (const tw of textWords) {
             if (tw.length < 2) continue;
