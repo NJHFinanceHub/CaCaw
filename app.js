@@ -934,26 +934,29 @@ async function fetchBirdSound(birdName) {
     if (audioCache[birdName]) return audioCache[birdName];
     const scientificName = BIRD_DB[birdName] || '';
 
-    try {
-        const wikiResult = await withTimeout(fetchFromWikimedia(birdName, scientificName), 8000);
-        if (wikiResult) { audioCache[birdName] = wikiResult; return wikiResult; }
-    } catch (err) { console.log('Wikimedia timed out, trying xeno-canto...'); }
+    // Fetch from all sources in parallel — first successful result wins
+    const wikiPromise = withTimeout(fetchFromWikimedia(birdName, scientificName), 8000).catch(() => null);
+    const xcPromise = withTimeout(fetchFromXenoCanto(birdName, scientificName), 8000).catch(() => null);
 
-    try {
-        const xcResult = await withTimeout(fetchFromXenoCanto(birdName, scientificName), 8000);
-        if (xcResult) { audioCache[birdName] = xcResult; return xcResult; }
-    } catch (err) { console.log('Xeno-canto timed out'); }
+    const [wikiResult, xcResult] = await Promise.all([wikiPromise, xcPromise]);
+
+    // Prefer Wikimedia (direct CORS), fall back to xeno-canto
+    const result = wikiResult || xcResult;
+    if (result) { audioCache[birdName] = result; return result; }
 
     return null;
 }
 
 async function fetchFromWikimedia(birdName, scientificName) {
     const searchTerms = [
-        scientificName ? scientificName + ' bird sound' : null,
         scientificName ? scientificName + ' call' : null,
+        scientificName ? scientificName + ' song' : null,
+        scientificName ? scientificName + ' bird sound' : null,
+        birdName + ' bird call',
         birdName + ' bird sound',
-        birdName + ' call',
+        birdName + ' song',
         scientificName || null,
+        birdName,
     ].filter(Boolean);
     const searches = [...new Set(searchTerms)];
     for (const term of searches) {
@@ -1008,30 +1011,52 @@ async function fetchFromWikimedia(birdName, scientificName) {
     return null;
 }
 
+const CORS_PROXIES = [
+    url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+    url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+];
+
+async function fetchViaProxy(url) {
+    for (const makeProxy of CORS_PROXIES) {
+        try {
+            const proxyUrl = makeProxy(url);
+            const resp = await fetch(proxyUrl);
+            if (!resp.ok) continue;
+            const ct = resp.headers.get('content-type') || '';
+            if (ct.includes('json')) {
+                const wrapper = await resp.json();
+                return wrapper.contents ? JSON.parse(wrapper.contents) : wrapper;
+            }
+            const text = await resp.text();
+            return JSON.parse(text);
+        } catch (e) { continue; }
+    }
+    return null;
+}
+
 async function fetchFromXenoCanto(birdName, scientificName) {
-    const searches = [scientificName, birdName.replace(/[']/g, '').replace(/[-]/g, ' ')].filter(Boolean);
+    const searches = [
+        scientificName,
+        birdName.replace(/[']/g, '').replace(/[-]/g, ' '),
+        birdName.split(/[\s-]+/).slice(-1)[0],
+    ].filter(Boolean);
     for (const searchTerm of searches) {
         const apiUrl = `https://xeno-canto.org/api/2/recordings?query=${encodeURIComponent(searchTerm)}&page=1`;
-        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`;
         try {
-            const response = await fetch(proxyUrl);
-            if (!response.ok) continue;
-            const wrapper = await response.json();
-            const data = JSON.parse(wrapper.contents);
-            if (data.recordings && data.recordings.length > 0) {
-                const sorted = [...data.recordings].sort((a, b) => {
-                    const aS = a.type && a.type.toLowerCase().includes('song') ? 1 : 0;
-                    const bS = b.type && b.type.toLowerCase().includes('song') ? 1 : 0;
-                    if (bS !== aS) return bS - aS;
-                    const q = { A: 5, B: 4, C: 3, D: 2, E: 1 };
-                    return (q[b.q] || 0) - (q[a.q] || 0);
-                });
-                const rec = sorted[0];
-                return { type: 'xeno-canto', id: rec.id,
-                    url: (rec.file.startsWith('//') ? 'https:' : '') + rec.file,
-                    recordist: rec.rec, country: rec.cnt, recordingType: rec.type,
-                    quality: rec.q, scientificName: rec.gen + ' ' + rec.sp };
-            }
+            const data = await fetchViaProxy(apiUrl);
+            if (!data || !data.recordings || data.recordings.length === 0) continue;
+            const sorted = [...data.recordings].sort((a, b) => {
+                const aS = a.type && a.type.toLowerCase().includes('song') ? 1 : 0;
+                const bS = b.type && b.type.toLowerCase().includes('song') ? 1 : 0;
+                if (bS !== aS) return bS - aS;
+                const q = { A: 5, B: 4, C: 3, D: 2, E: 1 };
+                return (q[b.q] || 0) - (q[a.q] || 0);
+            });
+            const rec = sorted[0];
+            return { type: 'xeno-canto', id: rec.id,
+                url: (rec.file.startsWith('//') ? 'https:' : '') + rec.file,
+                recordist: rec.rec, country: rec.cnt, recordingType: rec.type,
+                quality: rec.q, scientificName: rec.gen + ' ' + rec.sp };
         } catch (err) { console.error(`XC search failed for "${searchTerm}":`, err); }
     }
     return null;
