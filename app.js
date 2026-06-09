@@ -46,6 +46,7 @@ let tesseractWorker = null;
 let currentBird = null;
 let typewriterTimer = null;
 let speechUnlocked = false;
+let audioUnlocked = false;
 
 // ---- Bird Database ----
 // Covers Wingspan base game, European and Oceania expansions.
@@ -455,6 +456,32 @@ for (const [common, sci] of Object.entries(BIRD_DB)) {
 const audioCache = {};
 const factCache = {};
 
+// ---- Pokédex Collection (localStorage) ----
+const COLLECTION_KEY = 'wingdex-collection';
+const collectionCount = $('#collection-count');
+
+function loadCollection() {
+    try { return new Set(JSON.parse(localStorage.getItem(COLLECTION_KEY) || '[]')); }
+    catch { return new Set(); }
+}
+
+function saveCollection(set) {
+    localStorage.setItem(COLLECTION_KEY, JSON.stringify([...set]));
+}
+
+const collection = loadCollection();
+
+function addToCollection(bird) {
+    if (collection.has(bird)) return;
+    collection.add(bird);
+    saveCollection(collection);
+    updateCollectionCounter();
+}
+
+function updateCollectionCounter() {
+    if (collectionCount) collectionCount.textContent = `${collection.size}/${WINGSPAN_BIRDS.length}`;
+}
+
 // ---- Camera ----
 
 async function startCamera() {
@@ -551,6 +578,24 @@ function sharpenImageData(imageData) {
     return output;
 }
 
+function rotateImage(img, degrees) {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const w = img.width || img.naturalWidth;
+    const h = img.height || img.naturalHeight;
+    if (degrees === 90 || degrees === -90) {
+        canvas.width = h;
+        canvas.height = w;
+    } else {
+        canvas.width = w;
+        canvas.height = h;
+    }
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(degrees * Math.PI / 180);
+    ctx.drawImage(img, -w / 2, -h / 2);
+    return canvas;
+}
+
 async function recognizeBirdName(imageDataUrl) {
     loadingText.textContent = 'READING CARD...';
 
@@ -615,7 +660,37 @@ async function recognizeBirdName(imageDataUrl) {
         }
     }
 
-    return findScientificName(allOcrText);
+    sciMatch = findScientificName(allOcrText);
+    if (sciMatch) return sciMatch;
+
+    // Pass 3: rotated orientations (cards photographed sideways)
+    const rotCrops = [
+        { name: 'TOP', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
+        { name: 'NAME', top: 0, bottom: 0.15, left: 0.2, right: 1.0 },
+        { name: 'UPPER', top: 0, bottom: 0.35, left: 0.0, right: 1.0 },
+    ];
+    for (const deg of [90, -90, 180]) {
+        loadingText.textContent = `ROTATING ${deg > 0 ? '+' : ''}${deg}°...`;
+        const rotCanvas = rotateImage(img, deg);
+        const rotImg = new Image();
+        await new Promise(r => { rotImg.onload = r; rotImg.src = rotCanvas.toDataURL('image/jpeg', 0.92); });
+
+        for (const crop of rotCrops) {
+            const processed = preprocessImage(rotImg, crop, 140, false);
+            const { data } = await worker.recognize(processed);
+            const text = data.text.trim();
+            if (text.length > 2) {
+                console.log(`OCR [rot${deg} ${crop.name}]:`, text);
+                allOcrText += ' ' + text;
+                const match = findBirdInText(allOcrText);
+                if (match) { console.log(`Match: ${match}`); return match; }
+            }
+        }
+        sciMatch = findScientificName(allOcrText);
+        if (sciMatch) return sciMatch;
+    }
+
+    return null;
 }
 
 // ---- Matching ----
@@ -740,6 +815,26 @@ function trimToSentences(text, maxLen) {
     const slice = clean.slice(0, maxLen);
     const lastStop = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('.'));
     return lastStop > 60 ? slice.slice(0, lastStop + 1) : slice + '...';
+}
+
+// ---- Audio Unlock (iOS/Chrome autoplay policy) ----
+
+function unlockAudio() {
+    if (audioUnlocked) return;
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const buf = ctx.createBuffer(1, 1, 22050);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        src.start(0);
+        ctx.resume();
+    } catch (e) { /* ignore */ }
+    try {
+        birdAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+        birdAudio.play().then(() => { birdAudio.pause(); birdAudio.currentTime = 0; }).catch(() => {});
+    } catch (e) { /* ignore */ }
+    audioUnlocked = true;
 }
 
 // ---- Robotic Dex Voice ----
@@ -977,22 +1072,31 @@ function setupAudioPlayer(soundData, autoplay) {
     ledSound.classList.remove('on');
 
     birdAudio.src = soundData.url;
+    birdAudio.load();
     recordingInfo.textContent = formatRecordingInfo(soundData);
     show(audioPlayer);
 
     if (autoplay) {
-        birdAudio.play().then(() => {
-            playIcon.textContent = '⏸';
-            isPlaying = true;
-            ledSound.classList.add('on');
-        }).catch(() => {
-            if (soundData.type === 'xeno-canto' && soundData.id) {
-                hide(audioPlayer);
-                xcIframe.src = `https://xeno-canto.org/${soundData.id}/embed?simple=1`;
-                xcEmbedInfo.textContent = formatRecordingInfo(soundData);
-                show(xcEmbedPlayer);
-            }
-        });
+        const doPlay = () => {
+            birdAudio.play().then(() => {
+                playIcon.textContent = '⏸';
+                isPlaying = true;
+                ledSound.classList.add('on');
+            }).catch(() => {
+                if (soundData.type === 'xeno-canto' && soundData.id) {
+                    hide(audioPlayer);
+                    xcIframe.src = `https://xeno-canto.org/${soundData.id}/embed?simple=1`;
+                    xcEmbedInfo.textContent = formatRecordingInfo(soundData);
+                    show(xcEmbedPlayer);
+                }
+            });
+        };
+        if (birdAudio.readyState >= 3) {
+            doPlay();
+        } else {
+            birdAudio.addEventListener('canplaythrough', doPlay, { once: true });
+            setTimeout(doPlay, 5000);
+        }
     }
 }
 
@@ -1084,6 +1188,7 @@ async function showDexEntry(bird) {
     stopSpeech();
     resetAudioState();
     currentBird = bird;
+    addToCollection(bird);
     const sci = BIRD_DB[bird] || '';
     const dexNo = WINGSPAN_BIRDS.indexOf(bird) + 1;
 
@@ -1185,11 +1290,12 @@ function setupSearch() {
 
         if (matches.length === 0) { hide(searchResults); return; }
 
-        searchResults.innerHTML = matches.map(bird =>
-            `<div class="search-result-item" data-bird="${bird}">
-                ${bird}<br><span class="sci-name">${BIRD_DB[bird] || ''}</span>
-            </div>`
-        ).join('');
+        searchResults.innerHTML = matches.map(bird => {
+            const caught = collection.has(bird) ? '<span class="caught-badge">✓</span>' : '';
+            return `<div class="search-result-item${collection.has(bird) ? ' caught' : ''}" data-bird="${bird}">
+                ${caught}${bird}<br><span class="sci-name">${BIRD_DB[bird] || ''}</span>
+            </div>`;
+        }).join('');
         show(searchResults);
 
         searchResults.querySelectorAll('.search-result-item').forEach(item => {
@@ -1199,6 +1305,7 @@ function setupSearch() {
                 searchInput.value = '';
                 searchInput.blur();
                 unlockSpeech();
+                unlockAudio();
                 showDexEntry(bird);
             });
         });
@@ -1214,6 +1321,7 @@ function setupSearch() {
 scanBtn.addEventListener('click', () => {
     if (scanBtn.classList.contains('scanning')) return;
     unlockSpeech();
+    unlockAudio();
     // If viewing an entry, SCAN returns to camera first
     if (!entryView.classList.contains('hidden')) {
         showCameraMode();
@@ -1226,6 +1334,7 @@ scanBtn.addEventListener('click', () => {
 
 uploadBtn.addEventListener('click', () => {
     unlockSpeech();
+    unlockAudio();
     fileInput.click();
 });
 
@@ -1250,4 +1359,5 @@ speakBtn.addEventListener('click', () => {
 
 // ---- Init ----
 setupSearch();
+updateCollectionCounter();
 startCamera();
