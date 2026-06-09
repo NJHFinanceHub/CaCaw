@@ -39,6 +39,10 @@ const searchResults = $('#search-results');
 const ledScan = $('#led-scan');
 const ledVoice = $('#led-voice');
 const ledSound = $('#led-sound');
+const pokedexView = $('#pokedex-view');
+const pokedexGrid = $('#pokedex-grid');
+const pokedexStats = $('#pokedex-stats');
+const dexBtn = $('#dex-btn');
 
 let stream = null;
 let isPlaying = false;
@@ -605,14 +609,13 @@ async function recognizeBirdName(imageDataUrl) {
     const worker = await getWorker();
     let allOcrText = '';
 
-    // Pass 1: multiple crop regions covering common card layouts
+    // === Step 1: Original orientation, EXACT matches only ===
+    // (prevents false fuzzy matches when card is sideways)
     const crops = [
         { name: 'NAME BANNER', top: 0, bottom: 0.15, left: 0.25, right: 1.0 },
         { name: 'TOP BANNER', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
         { name: 'LEFT NAME', top: 0, bottom: 0.18, left: 0.0, right: 0.7 },
         { name: 'UPPER THIRD', top: 0, bottom: 0.35, left: 0.0, right: 1.0 },
-        { name: 'CENTER BAND', top: 0.25, bottom: 0.55, left: 0.0, right: 1.0 },
-        { name: 'FULL CARD', top: 0, bottom: 1.0, left: 0.0, right: 1.0 },
     ];
 
     for (const crop of crops) {
@@ -623,55 +626,21 @@ async function recognizeBirdName(imageDataUrl) {
         if (text.length > 2) {
             console.log(`OCR [${crop.name}]:`, text);
             allOcrText += ' ' + text;
-            const match = findBirdInText(allOcrText);
-            if (match) { console.log(`Match: ${match}`); return match; }
+            const match = findBirdInText(allOcrText, true);
+            if (match) { console.log(`Exact match: ${match}`); return match; }
         }
     }
 
     let sciMatch = findScientificName(allOcrText);
     if (sciMatch) return sciMatch;
 
-    // Pass 2: varied thresholds + inverted on multiple regions
-    loadingText.textContent = 'ENHANCED SCAN...';
-    const retryCrops = [
-        { name: 'top banner', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
-        { name: 'name banner', top: 0, bottom: 0.15, left: 0.25, right: 1.0 },
-    ];
-    const retryConfigs = [
-        { threshold: 100, invert: false },
-        { threshold: 180, invert: false },
-        { threshold: 140, invert: true },
-        { threshold: 100, invert: true },
-        { threshold: 200, invert: false },
-        { threshold: 60,  invert: false },
-    ];
-
-    for (const crop of retryCrops) {
-        for (const cfg of retryConfigs) {
-            const processed = preprocessImage(img, crop, cfg.threshold, cfg.invert);
-            const { data } = await worker.recognize(processed);
-            const text = data.text.trim();
-            if (text.length > 2) {
-                console.log(`OCR [retry ${crop.name} t=${cfg.threshold} inv=${cfg.invert}]:`, text);
-                allOcrText += ' ' + text;
-                const match = findBirdInText(allOcrText);
-                if (match) { console.log(`Match: ${match}`); return match; }
-            }
-        }
-    }
-
-    sciMatch = findScientificName(allOcrText);
-    if (sciMatch) return sciMatch;
-
-    // Pass 3: rotated orientations (cards photographed sideways)
-    // Use FRESH text per rotation so noise from wrong orientation doesn't cause false matches
+    // === Step 2: Rotated orientations (cards held sideways) ===
+    // Fresh text per rotation, full matching (exact + fuzzy)
     const rotCrops = [
         { name: 'TOP', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
         { name: 'NAME', top: 0, bottom: 0.15, left: 0.2, right: 1.0 },
         { name: 'UPPER', top: 0, bottom: 0.35, left: 0.0, right: 1.0 },
-        { name: 'FULL', top: 0, bottom: 1.0, left: 0.0, right: 1.0 },
     ];
-    const rotThresholds = [140, 100, 180];
     for (const deg of [90, -90, 180]) {
         loadingText.textContent = `ROTATING ${deg > 0 ? '+' : ''}${deg}°...`;
         const rotCanvas = rotateImage(img, deg);
@@ -680,23 +649,50 @@ async function recognizeBirdName(imageDataUrl) {
 
         let rotText = '';
         for (const crop of rotCrops) {
-            for (const thresh of rotThresholds) {
-                const processed = preprocessImage(rotImg, crop, thresh, false);
-                const { data } = await worker.recognize(processed);
-                const text = data.text.trim();
-                if (text.length > 2) {
-                    console.log(`OCR [rot${deg} ${crop.name} t=${thresh}]:`, text);
-                    rotText += ' ' + text;
-                    const match = findBirdInText(rotText);
-                    if (match) { console.log(`Match: ${match}`); return match; }
-                }
+            const processed = preprocessImage(rotImg, crop, 140, false);
+            const { data } = await worker.recognize(processed);
+            const text = data.text.trim();
+            if (text.length > 2) {
+                console.log(`OCR [rot${deg} ${crop.name}]:`, text);
+                rotText += ' ' + text;
+                const match = findBirdInText(rotText);
+                if (match) { console.log(`Rotation match: ${match}`); return match; }
             }
         }
         sciMatch = findScientificName(rotText);
         if (sciMatch) return sciMatch;
     }
 
-    return null;
+    // === Step 3: Enhanced original orientation (fuzzy matching allowed) ===
+    // For right-side-up cards that need varied thresholds
+    loadingText.textContent = 'ENHANCED SCAN...';
+    const enhancedCrops = [
+        { name: 'TOP BANNER', top: 0, bottom: 0.22, left: 0.0, right: 1.0 },
+        { name: 'NAME BANNER', top: 0, bottom: 0.15, left: 0.25, right: 1.0 },
+        { name: 'FULL CARD', top: 0, bottom: 1.0, left: 0.0, right: 1.0 },
+    ];
+    const enhancedConfigs = [
+        { threshold: 100, invert: false },
+        { threshold: 180, invert: false },
+        { threshold: 140, invert: true },
+        { threshold: 100, invert: true },
+    ];
+
+    for (const crop of enhancedCrops) {
+        for (const cfg of enhancedConfigs) {
+            const processed = preprocessImage(img, crop, cfg.threshold, cfg.invert);
+            const { data } = await worker.recognize(processed);
+            const text = data.text.trim();
+            if (text.length > 2) {
+                console.log(`OCR [enhanced ${crop.name} t=${cfg.threshold} inv=${cfg.invert}]:`, text);
+                allOcrText += ' ' + text;
+                const match = findBirdInText(allOcrText);
+                if (match) { console.log(`Enhanced match: ${match}`); return match; }
+            }
+        }
+    }
+
+    return findScientificName(allOcrText);
 }
 
 // ---- Matching ----
@@ -723,11 +719,10 @@ function findScientificName(text) {
     return null;
 }
 
-function findBirdInText(text) {
+function findBirdInText(text, exactOnly) {
     if (!text) return null;
 
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 2);
-    // Normalize: treat hyphens as spaces (OCR often drops them), strip other junk
     const normalized = text.toLowerCase().replace(/[-'']/g, ' ').replace(/[^a-z\s]/g, ' ').replace(/\s+/g, ' ');
 
     const sortedBirds = [...WINGSPAN_BIRDS].sort((a, b) => b.length - a.length);
@@ -736,6 +731,8 @@ function findBirdInText(text) {
         if (normalized.includes(birdNorm)) return bird;
     }
 
+    if (exactOnly) return null;
+
     let bestMatch = null;
     let bestScore = 0;
     let bestWords = 0;
@@ -743,7 +740,6 @@ function findBirdInText(text) {
 
     for (const bird of WINGSPAN_BIRDS) {
         const birdWords = bird.toLowerCase().replace(/['-]/g, ' ').split(/\s+/).filter(w => w.length > 1);
-        // Single-word names (Tui, Emu, Kea, Brant, etc.) only match on exact substring above
         if (birdWords.length <= 1) continue;
         for (const line of lines) {
             const lineLower = line.toLowerCase().replace(/[-'']/g, ' ').replace(/[^a-z\s]/g, ' ');
@@ -1154,13 +1150,53 @@ function resetAudioState() {
     hide(noSound);
 }
 
+// ---- Pokédex Grid ----
+
+function renderPokedexGrid() {
+    const allBirds = WINGSPAN_BIRDS.filter(b => !['Kookaburra','Kiwi','Bellbird','Common Starling','Eurasian Blackbird','Hoopoe'].includes(b));
+    pokedexGrid.innerHTML = allBirds.map((bird, i) => {
+        const num = i + 1;
+        const found = collection.has(bird);
+        return `<div class="pdex-cell${found ? ' discovered' : ''}" data-bird="${bird}">
+            <span class="pdex-num">${String(num).padStart(3, '0')}</span>
+            <span class="pdex-name">${found ? bird : '???'}</span>
+        </div>`;
+    }).join('');
+    const total = allBirds.length;
+    const discovered = allBirds.filter(b => collection.has(b)).length;
+    pokedexStats.textContent = `${discovered} / ${total} DISCOVERED`;
+    if (collectionCount) collectionCount.textContent = `${discovered}/${total}`;
+
+    pokedexGrid.querySelectorAll('.pdex-cell.discovered').forEach(cell => {
+        cell.addEventListener('click', () => {
+            unlockSpeech();
+            unlockAudio();
+            showDexEntry(cell.getAttribute('data-bird'));
+        });
+    });
+}
+
 // ---- View Switching ----
+
+function showPokedexMode() {
+    stopSpeech();
+    resetAudioState();
+    clearInterval(typewriterTimer);
+    hide(entryView);
+    hide(cameraView);
+    show(pokedexView);
+    hide(backBtn);
+    hide(speakBtn);
+    currentBird = null;
+    renderPokedexGrid();
+}
 
 function showCameraMode() {
     stopSpeech();
     resetAudioState();
     clearInterval(typewriterTimer);
     hide(entryView);
+    hide(pokedexView);
     show(cameraView);
     hide(backBtn);
     hide(speakBtn);
@@ -1170,6 +1206,7 @@ function showCameraMode() {
 
 function showEntryMode() {
     hide(cameraView);
+    hide(pokedexView);
     show(entryView);
     show(backBtn);
     show(speakBtn);
@@ -1332,9 +1369,10 @@ scanBtn.addEventListener('click', () => {
     if (scanBtn.classList.contains('scanning')) return;
     unlockSpeech();
     unlockAudio();
-    // If viewing an entry, SCAN returns to camera first
-    if (!entryView.classList.contains('hidden')) {
+    // If not already on camera view, switch to it first
+    if (cameraView.classList.contains('hidden')) {
         showCameraMode();
+        if (!stream) startCamera();
         return;
     }
     if (!stream) { startCamera(); return; }
@@ -1358,8 +1396,9 @@ fileInput.addEventListener('change', (e) => {
     fileInput.value = '';
 });
 
+dexBtn.addEventListener('click', showPokedexMode);
 playBtn.addEventListener('click', playAudio);
-backBtn.addEventListener('click', showCameraMode);
+backBtn.addEventListener('click', showPokedexMode);
 
 speakBtn.addEventListener('click', () => {
     if (!lastSpokenText) return;
@@ -1369,5 +1408,4 @@ speakBtn.addEventListener('click', () => {
 
 // ---- Init ----
 setupSearch();
-updateCollectionCounter();
-startCamera();
+showPokedexMode();
