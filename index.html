@@ -3,107 +3,151 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>CaCaw - Wingspan Bird Sound Scanner</title>
+    <title>CaCaw WingDex - Wingspan Bird Scanner</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐦</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="app">
-        <header>
-            <h1>CaCaw</h1>
-            <p class="subtitle">Wingspan Bird Sound Scanner</p>
-        </header>
+    <div id="dex">
 
-        <main>
-            <!-- Camera / Capture View -->
-            <div id="camera-section">
-                <div id="video-container">
-                    <video id="camera" autoplay playsinline></video>
-                    <canvas id="overlay" class="hidden"></canvas>
-                    <div id="camera-placeholder">
-                        <div class="placeholder-icon">📷</div>
-                        <p>Tap below to start camera</p>
-                    </div>
-                </div>
+        <!-- ===== Top bezel: lens, LEDs, title ===== -->
+        <div class="dex-top">
+            <div class="dex-lens">
+                <div class="lens-glass"></div>
+            </div>
+            <div class="dex-leds">
+                <span id="led-scan" class="led led-red"></span>
+                <span id="led-voice" class="led led-yellow"></span>
+                <span id="led-sound" class="led led-green"></span>
+            </div>
+            <div class="dex-title">
+                <h1>WingDex</h1>
+                <p class="dex-subtitle">BIRD IDENTIFICATION UNIT</p>
+            </div>
+        </div>
 
-                <div id="controls">
-                    <button id="start-camera-btn" class="btn btn-primary">Start Camera</button>
-                    <button id="capture-btn" class="btn btn-capture hidden">
-                        <span class="capture-ring"></span>
-                    </button>
-                    <button id="upload-btn" class="btn btn-secondary">Upload Photo</button>
-                    <input type="file" id="file-input" accept="image/*" capture="environment" class="hidden">
-                </div>
+        <!-- ===== Search bar ===== -->
+        <div id="search-bar">
+            <div class="search-wrapper">
+                <input type="text" id="search-input" placeholder="SEARCH BIRD DATABASE..." autocomplete="off">
+                <div id="search-results" class="hidden"></div>
+            </div>
+        </div>
 
-                <!-- Manual search -->
-                <div id="manual-search">
-                    <p class="search-label">Or search by name:</p>
-                    <div class="search-wrapper">
-                        <input type="text" id="search-input" placeholder="Type bird name..." autocomplete="off">
-                        <div id="search-results" class="hidden"></div>
-                    </div>
-                </div>
+        <!-- ===== Main screen ===== -->
+        <div class="dex-screen-bezel">
+            <div class="screen-top-lights">
+                <span class="mini-led"></span>
+                <span class="mini-led"></span>
             </div>
 
-            <!-- Result View -->
-            <div id="result-section" class="hidden">
-                <div id="captured-image-container">
-                    <img id="captured-image" alt="Captured card">
-                </div>
+            <div class="dex-screen">
+                <!-- Camera mode -->
+                <div id="camera-view">
+                    <video id="camera" autoplay playsinline></video>
+                    <div class="scanlines"></div>
+                    <div class="viewfinder-frame">
+                        <span class="corner tl"></span>
+                        <span class="corner tr"></span>
+                        <span class="corner bl"></span>
+                        <span class="corner br"></span>
+                    </div>
+                    <p class="camera-hint">AIM AT BIRD CARD</p>
 
-                <div id="status">
-                    <div id="loading" class="hidden">
-                        <div class="spinner"></div>
-                        <p id="loading-text">Scanning card...</p>
+                    <!-- Loading overlay during OCR -->
+                    <div id="scan-loading" class="hidden">
+                        <div class="scan-spinner"></div>
+                        <p id="loading-text">ANALYZING...</p>
                     </div>
                 </div>
 
-                <div id="bird-result" class="hidden">
-                    <div class="bird-info">
-                        <h2 id="bird-name"></h2>
-                        <p id="bird-scientific" class="scientific-name"></p>
+                <!-- Dex entry mode -->
+                <div id="entry-view" class="hidden">
+                    <div class="scanlines"></div>
+                    <div class="entry-header">
+                        <span id="entry-number">No.000</span>
+                        <h2 id="entry-name"></h2>
                     </div>
+                    <p id="entry-sci" class="entry-sci"></p>
 
-                    <div id="audio-player" class="hidden">
-                        <div class="audio-controls">
-                            <button id="play-btn" class="btn btn-play">
-                                <span class="play-icon">&#9654;</span>
-                            </button>
-                            <div class="audio-info">
-                                <p id="recording-info"></p>
-                                <div id="audio-progress">
-                                    <div id="audio-progress-bar"></div>
-                                </div>
+                    <div class="entry-body">
+                        <div id="entry-photo-frame">
+                            <img id="entry-photo" alt="" class="hidden">
+                            <div id="entry-photo-placeholder">
+                                <svg viewBox="0 0 24 24" fill="currentColor" width="42" height="42">
+                                    <path d="M23 11.5c-.5-1-2.5-1.6-4-1.5-1-2.6-3.4-4.5-6.5-4.5-1 0-1.9.2-2.8.6L4 2 5.5 7C4 8.4 3 10.3 3 12.5 3 16.6 6.4 20 10.5 20c5 0 9-3 11.5-6 .6-.7 1.3-1.7 1-2.5zM10 10a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+                                </svg>
                             </div>
                         </div>
-                        <audio id="bird-audio"></audio>
+                        <div class="entry-text-panel">
+                            <p id="entry-fact"></p>
+                        </div>
                     </div>
 
-                    <div id="xc-embed-player" class="hidden">
-                        <p id="xc-embed-info" class="embed-info"></p>
-                        <iframe id="xc-iframe" frameborder="0" scrolling="no" allowfullscreen></iframe>
+                    <p id="entry-status" class="entry-status"></p>
+
+                    <div id="error-message" class="hidden">
+                        <p id="error-text"></p>
                     </div>
-
-                    <div id="no-sound" class="hidden">
-                        <p>No recordings found for this bird.</p>
-                    </div>
-
-                    <button id="wrong-bird-btn" class="btn btn-link">Wrong bird? Search manually</button>
-                </div>
-
-                <div id="error-message" class="hidden">
-                    <p id="error-text"></p>
-                </div>
-
-                <div id="result-controls">
-                    <button id="scan-again-btn" class="btn btn-primary">Scan Another Card</button>
                 </div>
             </div>
-        </main>
+
+            <!-- Audio dock (shown under screen when a call is loaded) -->
+            <div id="audio-dock">
+                <div id="audio-player" class="hidden">
+                    <button id="play-btn" class="btn-play">
+                        <span class="play-icon">&#9654;</span>
+                    </button>
+                    <div class="audio-info">
+                        <p id="recording-info"></p>
+                        <div id="audio-progress"><div id="audio-progress-bar"></div></div>
+                    </div>
+                    <audio id="bird-audio"></audio>
+                </div>
+                <div id="xc-embed-player" class="hidden">
+                    <p id="xc-embed-info" class="embed-info"></p>
+                    <iframe id="xc-iframe" frameborder="0" scrolling="no" allowfullscreen></iframe>
+                </div>
+                <div id="no-sound" class="hidden">
+                    <p>NO CALL DATA FOUND</p>
+                </div>
+            </div>
+
+            <div class="speaker-grille">
+                <span></span><span></span><span></span><span></span><span></span><span></span>
+            </div>
+        </div>
+
+        <!-- ===== Controls ===== -->
+        <div class="dex-controls">
+            <button id="back-btn" class="btn-pad hidden">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" width="20" height="20">
+                    <path d="M19 12H5m7-7-7 7 7 7"/>
+                </svg>
+                BACK
+            </button>
+
+            <button id="scan-btn" class="scan-btn">
+                <span class="scan-ring"></span>
+                <span class="scan-label">SCAN</span>
+            </button>
+
+            <button id="speak-btn" class="btn-pad hidden">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20">
+                    <path d="M11 5 6 9H2v6h4l5 4V5zm5.5 2.5a5 5 0 0 1 0 9M19 4.8a9 9 0 0 1 0 14.4"/>
+                </svg>
+                DEX
+            </button>
+
+            <button id="upload-btn" class="upload-btn">UPLOAD PHOTO</button>
+            <input type="file" id="file-input" accept="image/*" capture="environment" class="hidden">
+        </div>
 
         <footer>
-            <p>Point your camera at a Wingspan card to hear the bird's call</p>
-            <p class="credits">Sounds from <a href="https://xeno-canto.org" target="_blank">Xeno-canto</a></p>
+            <p>CaCaw WingDex &middot; Sounds: <a href="https://xeno-canto.org" target="_blank">xeno-canto</a> &amp; <a href="https://commons.wikimedia.org" target="_blank">Wikimedia</a> &middot; Facts: <a href="https://en.wikipedia.org" target="_blank">Wikipedia</a></p>
         </footer>
     </div>
 
