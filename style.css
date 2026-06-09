@@ -631,11 +631,12 @@ body {
     display: grid;
     grid-template-columns: 1fr auto 1fr;
     grid-template-areas:
-        "back scan speak"
+        "back  scan speak"
+        ".     scan .    "
         "upload upload upload";
     align-items: center;
-    gap: 4px 12px;
-    padding: 8px 4px 0;
+    gap: 0 12px;
+    padding: 6px 4px 0;
 }
 
 .scan-btn {
@@ -726,7 +727,6 @@ body {
 
 .upload-btn {
     grid-area: upload;
-    grid-column: 1 / 4;
     justify-self: center;
     padding: 7px 18px;
     border-radius: 50px;
@@ -738,7 +738,7 @@ body {
     letter-spacing: 2px;
     cursor: pointer;
     transition: all 0.15s;
-    margin-top: 4px;
+    margin-top: 2px;
 }
 
 .upload-btn:active {
