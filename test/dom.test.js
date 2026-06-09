@@ -83,11 +83,11 @@ for (const cls of new Set(classRefs)) {
 }
 
 (async () => {
-    // Camera denied -> error entry should show
+    // App starts on Pokédex home screen
     await new Promise(r => setTimeout(r, 20));
-    check('camera-denied shows entry view error',
-        !doc.getElementById('entry-view').classList.contains('hidden') &&
-        !doc.getElementById('error-message').classList.contains('hidden'));
+    check('app starts on pokedex view',
+        !doc.getElementById('pokedex-view').classList.contains('hidden') &&
+        doc.getElementById('camera-view').classList.contains('hidden'));
 
     // --- Search flow ---
     const input = doc.getElementById('search-input');
@@ -119,9 +119,9 @@ for (const cls of new Set(classRefs)) {
     const factText = doc.getElementById('entry-fact').textContent;
     check('fact typed out on screen', factText.includes('northern cardinal is a songbird'));
 
-    // --- Back button returns to camera ---
+    // --- Back button returns to pokedex ---
     doc.getElementById('back-btn').dispatchEvent(new window.Event('click', { bubbles: true }));
-    check('back returns to camera view', !doc.getElementById('camera-view').classList.contains('hidden'));
+    check('back returns to pokedex view', !doc.getElementById('pokedex-view').classList.contains('hidden'));
     check('entry hidden after back', doc.getElementById('entry-view').classList.contains('hidden'));
 
     console.log(`\n=== DOM RESULTS ===\n${pass} passed, ${fail} failed`);
